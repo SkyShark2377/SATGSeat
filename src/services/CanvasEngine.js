@@ -928,6 +928,15 @@ export const CanvasEngine = {
     },
     
     attachControlListeners() {
+        // --- MULTI-TOUCH & DOUBLE-TAP STATE VARIABLES ---
+        let touchZooming = false;
+        let initialDistance = 0;
+        let initialZoom = 1;
+        let lastPanX = 0;
+        let lastPanY = 0;
+        let lastTouchTime = 0;
+
+        // 1. MOUSE WHEEL (PC Zoom)
         this.canvas.on('mouse:wheel', (opt) => {
             let zoom = this.canvas.getZoom() * (0.999 ** opt.e.deltaY);
             if (zoom > 5) zoom = 5; if (zoom < 0.1) zoom = 0.1;
@@ -935,76 +944,111 @@ export const CanvasEngine = {
             opt.e.preventDefault(); opt.e.stopPropagation();
         });
 
+        // 2. MOUSE DOWN / TOUCH START
         this.canvas.on('mouse:down', (options) => {
             const e = options.e;
+            
+            // A. PC Panning (Shift-Click or Middle-Click)
             if (e.shiftKey || e.button === 1) { 
                 this.isDragging = true; this.canvas.selection = false;
                 this.lastPosX = e.clientX; this.lastPosY = e.clientY;
+                return;
             }
+
+            // B. MOBILE MULTI-TOUCH: 2-Finger Pinch/Pan Detection
+            if (e.touches && e.touches.length === 2) {
+                touchZooming = true;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                
+                initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                initialZoom = this.canvas.getZoom();
+                lastPanX = (t1.clientX + t2.clientX) / 2;
+                lastPanY = (t1.clientY + t2.clientY) / 2;
+                
+                this.canvas.selection = false; 
+                this.canvas.discardActiveObject();
+                return;
+            }
+
+            // C. MOBILE SINGLE-TOUCH: Double-Tap Polyfill
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTouchTime;
+            if (tapLength > 0 && tapLength < 300) {
+                this.canvas.fire('mouse:dblclick', options);
+                if (e.preventDefault) e.preventDefault();
+            }
+            lastTouchTime = currentTime;
         });
 
+        // 3. MOUSE MOVE / TOUCH MOVE
         this.canvas.on('mouse:move', (options) => {
-            if (this.isDragging) {
-                this.canvas.viewportTransform[4] += options.e.clientX - this.lastPosX;
-                this.canvas.viewportTransform[5] += options.e.clientY - this.lastPosY;
-                this.canvas.requestRenderAll();
-                this.lastPosX = options.e.clientX; this.lastPosY = options.e.clientY;
-            }
-        });
-
-        this.canvas.on('mouse:up', () => {
-            this.isDragging = false; this.canvas.selection = true;
-            this.canvas.getObjects().forEach(obj => obj.setCoords()); 
-        });
-        
-        this.canvas.on('object:moving', (options) => {
-            if (!this.isSnapEnabled) return;
-            let l = Math.round(options.target.left / 6) * 6;
-            let t = Math.round(options.target.top / 6) * 6;
-            options.target.set({ left: l, top: t });
+            const e = options.e;
             
-            window.dispatchEvent(new CustomEvent('canvas-layout-moving'));
-        });
-        
-        this.canvas.on('object:scaling', (options) => {
-            const obj = options.target;
-            if (obj && obj.isFurniture) {
-                obj.getObjects().forEach(child => {
-                    if (child.type === 'textbox' || child.type === 'text') {
-                        child.set({ scaleX: 1 / obj.scaleX, scaleY: 1 / obj.scaleY });
-                    }
-                });
+            // A. PC Panning
+            if (this.isDragging) {
+                this.canvas.viewportTransform[4] += e.clientX - this.lastPosX;
+                this.canvas.viewportTransform[5] += e.clientY - this.lastPosY;
+                this.canvas.requestRenderAll();
+                this.lastPosX = e.clientX; this.lastPosY = e.clientY;
+                return;
+            }
+
+            // B. MOBILE MULTI-TOUCH: Panning and Zooming
+            if (touchZooming && e.touches && e.touches.length === 2) {
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                
+                const currentPanX = (t1.clientX + t2.clientX) / 2;
+                const currentPanY = (t1.clientY + t2.clientY) / 2;
+                
+                // Pan Math
+                const vpt = this.canvas.viewportTransform;
+                vpt[4] += currentPanX - lastPanX; 
+                vpt[5] += currentPanY - lastPanY; 
+                lastPanX = currentPanX;
+                lastPanY = currentPanY;
+
+                // Zoom Math
+                const currentDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                const zoomDelta = currentDistance / initialDistance;
+                let newZoom = initialZoom * zoomDelta;
+                
+                if (newZoom > 5) newZoom = 5;
+                if (newZoom < 0.1) newZoom = 0.1; // Matched your 0.1 limit
+
+                this.canvas.zoomToPoint({ x: currentPanX, y: currentPanY }, newZoom);
+                this.canvas.requestRenderAll();
+                
+                if (e.preventDefault) e.preventDefault();
+                if (e.stopPropagation) e.stopPropagation();
             }
         });
 
-        this.canvas.on('object:modified', (options) => {
-            let obj = options.target;
-            if (obj && obj.isFurniture && !obj.seats && obj.blueprint) {
-                if (obj.scaleX !== 1 || obj.scaleY !== 1) {
-                    obj.blueprint.width *= obj.scaleX; 
-                    obj.blueprint.height *= obj.scaleY;
-                    
-                    const newGroup = this.buildAssetObject(obj.furnitureType, Math.abs(obj.blueprint.width), Math.abs(obj.blueprint.height), obj.blueprint.fill, obj.blueprint.stroke, obj.blueprint.label, obj.blueprint.textFill, obj.blueprint.shape);
-                    
-                    newGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, furnitureId: obj.furnitureId, isPositionLocked: obj.isPositionLocked });
-                    
-                    if (newGroup.isPositionLocked) {
-                        newGroup.set({ lockMovementX: true, lockMovementY: true, lockRotation: true, lockScalingX: true, lockScalingY: true, hasControls: false });
-                    }
-                    
-                    this.canvas.remove(obj); 
-                    this.canvas.add(newGroup); 
-                    this.canvas.setActiveObject(newGroup);
+        // 4. MOUSE UP / TOUCH END
+        this.canvas.on('mouse:up', (options) => {
+            const e = options.e;
+            
+            // Turn off PC Panning
+            this.isDragging = false; 
+            
+            // Turn off Mobile Panning if fingers lifted
+            if (touchZooming) {
+                if (!e.touches || e.touches.length < 2) {
+                    touchZooming = false;
                 }
             }
-            this.saveLayout(); 
+            
+            this.canvas.selection = true;
+            this.canvas.getObjects().forEach(obj => obj.setCoords()); 
         });
 
-        this.canvas.upperCanvasEl.addEventListener('dblclick', (e) => {
+        // 5. DOUBLE CLICK / DOUBLE TAP (Moved to Fabric Event to support mobile)
+        this.canvas.on('mouse:dblclick', (options) => {
             const activeObj = this.canvas.getActiveObject();
             if (activeObj && activeObj.isFurniture) {
                 if (activeObj.seats) {
-                    const pointer = this.canvas.getPointer(e);
+                    const pointer = this.canvas.getPointer(options.e);
                     let clickedSeat = null; let minDistance = 999999;
                     activeObj.seats.forEach(seat => {
                         const globalCenter = this.getGlobalSeatCenter(activeObj, seat);
@@ -1042,6 +1086,53 @@ export const CanvasEngine = {
             }
         });
 
+        // 6. SNAP TO GRID
+        this.canvas.on('object:moving', (options) => {
+            if (!this.isSnapEnabled) return;
+            let l = Math.round(options.target.left / 6) * 6;
+            let t = Math.round(options.target.top / 6) * 6;
+            options.target.set({ left: l, top: t });
+            
+            window.dispatchEvent(new CustomEvent('canvas-layout-moving'));
+        });
+        
+        // 7. PREVENT TEXT SCALING
+        this.canvas.on('object:scaling', (options) => {
+            const obj = options.target;
+            if (obj && obj.isFurniture) {
+                obj.getObjects().forEach(child => {
+                    if (child.type === 'textbox' || child.type === 'text') {
+                        child.set({ scaleX: 1 / obj.scaleX, scaleY: 1 / obj.scaleY });
+                    }
+                });
+            }
+        });
+
+        // 8. ASSET RESIZING & SAVE
+        this.canvas.on('object:modified', (options) => {
+            let obj = options.target;
+            if (obj && obj.isFurniture && !obj.seats && obj.blueprint) {
+                if (obj.scaleX !== 1 || obj.scaleY !== 1) {
+                    obj.blueprint.width *= obj.scaleX; 
+                    obj.blueprint.height *= obj.scaleY;
+                    
+                    const newGroup = this.buildAssetObject(obj.furnitureType, Math.abs(obj.blueprint.width), Math.abs(obj.blueprint.height), obj.blueprint.fill, obj.blueprint.stroke, obj.blueprint.label, obj.blueprint.textFill, obj.blueprint.shape);
+                    
+                    newGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, furnitureId: obj.furnitureId, isPositionLocked: obj.isPositionLocked });
+                    
+                    if (newGroup.isPositionLocked) {
+                        newGroup.set({ lockMovementX: true, lockMovementY: true, lockRotation: true, lockScalingX: true, lockScalingY: true, hasControls: false });
+                    }
+                    
+                    this.canvas.remove(obj); 
+                    this.canvas.add(newGroup); 
+                    this.canvas.setActiveObject(newGroup);
+                }
+            }
+            this.saveLayout(); 
+        });
+
+        // 9. DELETE KEY LISTENER
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
@@ -1053,7 +1144,7 @@ export const CanvasEngine = {
                 }
             }
         });
-    },
+    }
     
     updateAssetProperties(furnitureId, newLabel, newWidth, newHeight, isLocked) {
         const obj = this.canvas.getObjects().find(o => o.furnitureId === furnitureId);
