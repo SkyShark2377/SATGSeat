@@ -1144,7 +1144,7 @@ export const CanvasEngine = {
                 }
             }
         });
-    }
+    },
     
     updateAssetProperties(furnitureId, newLabel, newWidth, newHeight, isLocked) {
         const obj = this.canvas.getObjects().find(o => o.furnitureId === furnitureId);
