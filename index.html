@@ -51,19 +51,16 @@
         <aside class="w-72 bg-white flex flex-col border-r border-gray-300 shadow-sm z-10 shrink-0">
             <!-- CONSOLIDATED HEADER START -->
             <div class="p-4 border-b border-gray-200 flex flex-col gap-3 shrink-0">
-                <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
+                <div class="flex justify-between items-center">
+                    <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
+                    <button @click="showHelpModal = true" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-bold transition">?</button>
+                </div>
                 <div class="flex gap-2">
                     <button @click="$refs.restoreInput.click()" class="text-[9px] bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-300 px-2 py-1 rounded font-black tracking-widest shadow-sm transition flex-1 cursor-pointer">RESTORE</button>
                     <input type="file" ref="restoreInput" @change="handleAppRestore" accept=".json" class="hidden">
-                    
                     <button @click="handleAppBackup" class="text-[9px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 px-2 py-1 rounded font-black tracking-widest shadow-sm transition flex-1 cursor-pointer">BACKUP</button>
-                    
-                    <button @click="devWipeDatabase" class="text-[9px] bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 px-2 py-1 rounded font-black tracking-widest shadow-sm transition flex-1 cursor-pointer">WIPE DB</button>
                 </div>
             </div>
-			<div class="absolute bottom-2 right-2 text-xs text-gray-500 z-50 pointer-events-none">
-				Build: v1.1
-			</div>
             <!-- CONSOLIDATED HEADER END -->
 
             <nav class="flex border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50">
@@ -191,6 +188,13 @@
                         <button v-if="editingSeat.isAnchored && store.ui.activePeriodId === 'period_homeroom_base'" @click="removeAnchor" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 font-bold py-3 rounded-lg shadow-sm transition text-xs flex justify-center items-center gap-2 mt-2">
                             ⚓ Remove Anchor
                         </button>
+						<button v-if="!editingSeat.isAnchored && editingSeat.studentId && store.ui.activePeriodId === 'period_homeroom_base'" @click="addAnchor" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 font-bold py-3 rounded-lg shadow-sm transition text-xs flex justify-center items-center gap-2 mt-2">
+                            ⚓ Set Anchor Here
+                        </button>
+                        
+                        <div v-else-if="editingSeat.isAnchored" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-lg shadow-sm border border-slate-200 text-xs flex justify-center items-center gap-2 mt-2 cursor-not-allowed">
+                            ⚓ Anchored (Must unlock in Homeroom)
+                        </div>
                         <div v-else-if="editingSeat.isAnchored" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-lg shadow-sm border border-slate-200 text-xs flex justify-center items-center gap-2 mt-2 cursor-not-allowed">
                             ⚓ Anchored (Must unlock in Homeroom)
                         </div>
@@ -203,12 +207,55 @@
                 </div>
             </div>
         </div>
+		
+		<!-- Bulk Anchor Modal -->
+        <div v-if="showBulkAnchorModal" class="absolute inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+                <div class="bg-indigo-600 text-white px-5 py-3 flex justify-between items-center shrink-0">
+                    <h2 class="text-sm font-bold flex items-center gap-2">⚓ Bulk Anchor</h2>
+                    <button @click="showBulkAnchorModal = false" class="text-indigo-200 hover:text-white text-xl font-bold cursor-pointer leading-none">&times;</button>
+                </div>
+                
+                <div class="p-5 flex flex-col gap-4 text-sm bg-slate-50 text-center">
+                    <p class="text-slate-700 font-bold text-base">There are {{ bulkAnchorData.length }} students seated without anchors.</p>
+                    <p class="text-slate-500">Do you want to anchor ALL of them to their current desks at once?</p>
+                </div>
+                
+                <div class="bg-white px-5 py-3 shrink-0 flex flex-col gap-2 border-t border-slate-200">
+                    <button @click="confirmBulkAnchor" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg transition text-xs shadow-sm">
+                        Anchor ALL Students
+                    </button>
+                    <button @click="confirmSingleAnchor" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-lg transition text-xs">
+                        Anchor This Student Only
+                    </button>
+                </div>
+            </div>
+        </div>
+
+		<div v-if="showHelpModal" class="absolute inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" @click.self="showHelpModal = false">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+                <div class="bg-blue-600 text-white px-5 py-3 flex justify-between items-center">
+                    <h2 class="text-sm font-bold flex items-center gap-2" v-text="helpContent[currentTab]?.title || 'Help'"></h2>
+                    <button @click="showHelpModal = false" class="text-blue-200 hover:text-white text-xl font-bold">&times;</button>
+                </div>
+                <div class="p-6 text-sm text-gray-700 leading-relaxed bg-slate-50 whitespace-pre-wrap" v-text="helpContent[currentTab]?.body || 'No help available for this section.'"></div>
+                <div class="bg-white px-5 py-3 flex justify-end border-t border-slate-200">
+                    <button @click="showHelpModal = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-4 rounded text-xs">Close</button>
+                </div>
+            </div>
+        </div>
 
     </div> 
     
+	<!-- BUILD VERSION -->
+	<div class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider pointer-events-none z-50">
+		v1.0.0
+	</div>
+	
     <script type="module">
         import { DataStore } from './src/services/DataStore.js';
         import { CanvasEngine } from './src/services/CanvasEngine.js';
+		import { HelpContent } from './src/services/HelpContent.js';
         import { PeriodControls } from './src/components/PeriodControls.js';
         import { PeriodAssignment } from './src/components/PeriodAssignment.js';
         import { StudentRegistry } from './src/components/StudentRegistry.js';
@@ -236,12 +283,16 @@
             },
             data() {
                 return {
+					helpContent: HelpContent,
+                    showHelpModal: false,
                     currentTab: 'seating',
                     store: DataStore.state,
                     showAssetModal: false,
                     editingAsset: { id: '', label: '', width: 0, height: 0, isLocked: false },
                     showSeatModal: false,
-                    editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' }
+                    editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' },
+					showBulkAnchorModal: false,
+                    bulkAnchorData: []
                 };
             },
             watch: {
@@ -266,6 +317,11 @@
                     this.showAssetModal = true;
                 });
 
+                window.addEventListener('canvas-layout-modified', () => {
+                    // Force the header to recount desks
+                    CanvasEngine.updateRoomHeaderLayout();
+                });
+
                 window.addEventListener('open-seat-modal', (e) => {
                     this.editingSeat = { ...e.detail };
                     if (this.editingSeat.studentId) {
@@ -275,8 +331,19 @@
                         this.editingSeat.studentName = '';
                     }
                     this.showSeatModal = true;
+                }); // <-- THIS WAS MISSING!
+
+                // Secret DB Wipe Shortcut (Ctrl + Shift + Alt + W)
+                window.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.shiftKey && e.altKey && e.code === 'KeyW') {
+                        e.preventDefault();
+                        if (confirm('DEV MODE: Are you absolutely sure you want to wipe the entire database?')) {
+                            this.devWipeDatabase();
+                        }
+                    }
                 });
-				this.$nextTick(() => { this.refreshCanvasEnvironment(); });
+
+                this.$nextTick(() => { this.refreshCanvasEnvironment(); });
             },
             methods: {
 				devWipeDatabase() {
@@ -348,6 +415,56 @@
                     }
                     this.showSeatModal = false;
                 },
+				addAnchor() {
+                    let unanchoredCount = 0;
+                    const unanchoredSeats = [];
+                    
+                    CanvasEngine.canvas.getObjects().forEach(g => {
+                        if (g.isFurniture && g.seats) {
+                            g.seats.forEach(s => {
+                                if (s.assignedStudentId) {
+                                    const student = this.store.students[s.assignedStudentId];
+                                    if (student && !student.ownedSeatKey) {
+                                        unanchoredCount++;
+                                        unanchoredSeats.push({ student, seatKey: g.furnitureId + '_' + s.seatIndex });
+                                    }
+                                }
+                            });
+                        }
+                    });
+
+                    if (unanchoredCount > 1) {
+                        // Open the custom UI modal
+                        this.bulkAnchorData = unanchoredSeats;
+                        this.showBulkAnchorModal = true;
+                    } else {
+                        // If only 1 student needs an anchor, skip the modal
+                        this.confirmSingleAnchor();
+                    }
+                },
+
+                // NEW ACTION HANDLERS FOR THE MODAL
+                confirmBulkAnchor() {
+                    this.bulkAnchorData.forEach(item => {
+                        item.student.ownedSeatKey = item.seatKey;
+                    });
+                    this.finalizeAnchor();
+                },
+                
+                confirmSingleAnchor() {
+                    const targetStudent = this.store.students[this.editingSeat.studentId];
+                    if (targetStudent) targetStudent.ownedSeatKey = this.editingSeat.seatKey;
+                    this.finalizeAnchor();
+                },
+                
+                finalizeAnchor() {
+                    DataStore.persist();
+                    CanvasEngine.refreshAllSeatIcons(); 
+                    this.showSeatModal = false;
+                    this.showBulkAnchorModal = false;
+                    this.bulkAnchorData = [];
+                },
+				
                 toggleSeatLock() {
                     const group = CanvasEngine.canvas.getObjects().find(o => o.furnitureId === this.editingSeat.furnitureId);
                     if (group && group.seats) {
