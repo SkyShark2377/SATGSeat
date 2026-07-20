@@ -175,6 +175,7 @@ export const CanvasEngine = {
             selectable: false, 
             evented: false, 
             isBackgroundElement: true,
+			isRoomHeader: true,
             objectCaching: false 
         });
         
@@ -196,6 +197,7 @@ export const CanvasEngine = {
                 if (obj.isBackgroundElement) return 0;
                 if (obj.isFurniture && obj.furnitureType && obj.furnitureType.includes('rug')) return 1;
                 if (obj.isFurniture && (obj.furnitureType === 'window' || obj.furnitureType === 'door')) return 3;
+                if (obj.isFurniture && obj.furnitureType === 'front_marker') return 4; // Always on top
                 return 2; 
             };
             return getZ(a) - getZ(b);
@@ -228,14 +230,20 @@ export const CanvasEngine = {
         
         this.canvas.getObjects().forEach(g => {
             if (g.isFurniture && g.seats) {
+                // FIX: Un-rotate before update
+                const originalAngle = g.angle;
+                g.set({ angle: 0 });
+
                 g.seats.forEach(s => {
                     const seatKey = g.furnitureId + '_' + s.seatIndex;
                     const isAnchored = Object.values(DataStore.state.students).some(st => st.ownedSeatKey === seatKey);
                     
-                    if (s.lockIconObj) s.lockIconObj.set({ text: s.isLocked ? '🔒' : '' });
-                    if (s.anchorIconObj) s.anchorIconObj.set({ text: (isAnchored && isHomeroomActive) ? '⚓' : '' });
+                    if (s.lockIconObj) s.lockIconObj.set({ opacity: s.isLocked ? 1 : 0 });
+                    if (s.anchorIconObj) s.anchorIconObj.set({ opacity: (isAnchored && isHomeroomActive) ? 1 : 0 });
                 });
+                
                 g.addWithUpdate();
+                g.set({ angle: originalAngle }); // Snap back to original angle
             }
         });
         this.canvas.requestRenderAll();
@@ -319,7 +327,13 @@ export const CanvasEngine = {
         if (seatObj.chairObj) { seatObj.chairObj.set({ fill: chairFill, stroke: chairStroke }); seatObj.chairObj.dirty = true; }
         if (seatObj.rectObj) { seatObj.rectObj.set({ stroke: deskStroke, strokeWidth: deskStrokeWidth, fill: '#fef3c7' }); seatObj.rectObj.dirty = true; }
         
-        if (group) group.addWithUpdate();
+        if (group) {
+            // FIX: Prevent ballooning bounding boxes by un-rotating before update
+            const originalAngle = group.angle;
+            group.set({ angle: 0 });
+            group.addWithUpdate();
+            group.set({ angle: originalAngle });
+        }
     },
 
     clearSeats() {
@@ -380,38 +394,63 @@ export const CanvasEngine = {
 
         let studentsToPlace = [...unseatedStudents];
         
-        const anchoredStudents = studentsToPlace.filter(s => s.ownedSeatKey);
-        studentsToPlace = studentsToPlace.filter(s => !s.ownedSeatKey);
+        // 1. Get the physical Room ID for the active period
+        const currentPeriod = DataStore.state.periods[DataStore.state.ui.activePeriodId];
+        const currentRoomId = currentPeriod ? currentPeriod.classroomId : null;
+        
+        // 2. Get the physical Room ID where Homeroom takes place
+        const homeroomPeriod = DataStore.state.periods['period_homeroom_base'];
+        const homeroomRoomId = homeroomPeriod ? homeroomPeriod.classroomId : null;
 
-        anchoredStudents.forEach(student => {
-            let foundGroup, foundSeat;
-            this.canvas.getObjects().forEach(g => {
-                if (g.isFurniture && g.seats) {
-                    g.seats.forEach(s => {
-                        if (g.furnitureId + '_' + s.seatIndex === student.ownedSeatKey) {
-                            foundGroup = g; foundSeat = s;
-                        }
-                    });
+        // 3. Only waste cycles searching for anchors if we are in the exact same physical room
+        if (currentRoomId && homeroomRoomId && currentRoomId === homeroomRoomId) {
+            const anchoredStudents = studentsToPlace.filter(s => s.ownedSeatKey);
+            studentsToPlace = studentsToPlace.filter(s => !s.ownedSeatKey);
+
+            anchoredStudents.forEach(student => {
+                let foundGroup, foundSeat;
+                this.canvas.getObjects().forEach(g => {
+                    if (g.isFurniture && g.seats) {
+                        g.seats.forEach(s => {
+                            if (g.furnitureId + '_' + s.seatIndex === student.ownedSeatKey) {
+                                foundGroup = g; foundSeat = s;
+                            }
+                        });
+                    }
+                });
+                
+                if (foundGroup && foundSeat) {
+                    this.assignStudentToSeatObject(foundGroup, foundSeat, student.id, student, foundSeat.isLocked);
+                } else {
+                    studentsToPlace.push(student);
                 }
             });
-            if (foundGroup && foundSeat) {
-                this.assignStudentToSeatObject(foundGroup, foundSeat, student.id, student, foundSeat.isLocked);
-            } else {
-                alert(`Hard Error: ${student.name} is anchored to a desk not present in this layout.`);
-            }
-        });
+        }
 
         if (emptySeats.length === 0 && studentsToPlace.length > 0) {
             alert("Not enough empty, unlocked, unanchored seats to place everyone!");
             return;
         }
 
-        emptySeats.sort((a, b) => {
-            if (Math.abs(a.y - b.y) > 15) return a.y - b.y;
-            return a.x - b.x; 
-        });
+        // --- RADIAL SORTING COMPASS ENGINE ---
+        let fX = this.roomInchesW / 2;
+        let fY = 0;
+        const frontMarker = this.canvas.getObjects().find(o => o.furnitureType === 'front_marker');
+        if (frontMarker) {
+            fX = frontMarker.left;
+            fY = frontMarker.top;
+        }
 
-        let expectedGenderToggle = 'Male'; 
+        emptySeats.sort((a, b) => {
+            const distA = Math.hypot(a.x - fX, a.y - fY);
+            const distB = Math.hypot(b.x - fX, b.y - fY);
+            
+            // If desks are practically equidistant (e.g. adjacent side-by-side)
+            if (Math.abs(distA - distB) < 15) {
+                return a.x - b.x; 
+            }
+            return distA - distB;
+        });
 
         for (let seatIndex = 0; seatIndex < emptySeats.length; seatIndex++) {
             if (studentsToPlace.length === 0) break;
@@ -468,26 +507,58 @@ export const CanvasEngine = {
 
                 if (hasRestriction) score -= 1000000; 
 
+                // --- NEW SPATIAL GENDER ENGINE ---
+                let adjacentSameGender = 0;
+                let adjacentDiffGender = 0;
+                let hasSideBySideNeighbor = false;
+
+                if (targetNode.group && targetNode.group.seats) {
+                    targetNode.group.seats.forEach(s => {
+                        if (s.assignedStudentId) {
+                            const otherStudent = studentsDict[s.assignedStudentId];
+                            if (otherStudent) {
+                                const posB = this.getGlobalSeatCenter(targetNode.group, s);
+                                const dx = Math.abs(targetNode.x - posB.x);
+                                const dy = Math.abs(targetNode.y - posB.y);
+
+                                // dy < 20 isolates seats to the EXACT SAME ROW (ignoring the seats facing them)
+                                // dx < 50 ensures the seat is immediately adjacent left or right
+                                if (dy < 20 && dx > 0 && dx < 50) {
+                                    hasSideBySideNeighbor = true;
+                                    if (otherStudent.gender === student.gender) {
+                                        adjacentSameGender++;
+                                    } else {
+                                        adjacentDiffGender++;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
                 if (mode === 'alternating') {
-                    if (student.gender === expectedGenderToggle) {
-                        score += 50000;
-                    } else if (student.gender !== 'Male' && student.gender !== 'Female') {
-                        score += 25000; 
+                    if (hasSideBySideNeighbor) {
+                        // Strictly enforce alternating on the same side of the pod
+                        score += (adjacentDiffGender * 50000);
+                        score -= (adjacentSameGender * 50000);
+                    } else {
+                        // Fallback: overall pod balance to ensure we don't accidentally dump all boys in one pod
+                        if (groupMales > groupFemales && student.gender === 'Female') score += 10000;
+                        if (groupFemales > groupMales && student.gender === 'Male') score += 10000;
+                    }
+                } 
+                else if (mode === 'clustered') {
+                    if (hasSideBySideNeighbor) {
+                        score += (adjacentSameGender * 50000);
+                        score -= (adjacentDiffGender * 50000);
+                    } else {
+                        if (groupMales > 0 && student.gender === 'Male') score += 10000;
+                        if (groupFemales > 0 && student.gender === 'Female') score += 10000;
                     }
                 }
 
-                if (groupMales === 1 && groupFemales === 0 && student.gender === 'Male') score += 20000;
-                if (groupFemales === 1 && groupMales === 0 && student.gender === 'Female') score += 20000;
-                if (groupMales > 1 && groupFemales === 1 && student.gender === 'Female') score += 20000;
-                if (groupFemales > 1 && groupMales === 1 && student.gender === 'Male') score += 20000;
-
                 if (student.requiresPreferredSeating) {
                     score += Math.max(1000, 10000 - (seatIndex * 50));
-                }
-
-                if (mode === 'clustered') {
-                    if (groupMales > 0 && student.gender === 'Male') score += 10000;
-                    if (groupFemales > 0 && student.gender === 'Female') score += 10000;
                 }
 
                 score += Math.random() * 10;
@@ -501,9 +572,6 @@ export const CanvasEngine = {
             if (bestStudentIndex !== -1) {
                 const selectedStudent = studentsToPlace.splice(bestStudentIndex, 1)[0];
                 this.assignStudentToSeatObject(targetNode.group, targetNode.seat, selectedStudent.id, selectedStudent, false);
-                
-                if (selectedStudent.gender === 'Male') expectedGenderToggle = 'Female';
-                else if (selectedStudent.gender === 'Female') expectedGenderToggle = 'Male';
             }
         }
         
@@ -554,6 +622,11 @@ export const CanvasEngine = {
                     furnitureId: obj.furnitureId, furnitureType: obj.furnitureType, blueprint: obj.blueprint, isPositionLocked: obj.isPositionLocked || false
                 });
 
+                // NEW: Secretly save the custom front marker pos to the active period
+                if (obj.furnitureType === 'front_marker' && periodId) {
+                    assignments['front_marker_pos'] = { left: obj.left, top: obj.top, angle: obj.angle };
+                }
+
                 if (obj.seats && periodId) {
                     obj.seats.forEach(s => {
                         if (s.assignedStudentId || s.isLocked) { 
@@ -576,17 +649,73 @@ export const CanvasEngine = {
         }
     },
 
-    buildFrontMarker() {
-        const frontText = new fabric.Text('FRONT', {
-            fontSize: 10, fontFamily: 'sans-serif', fontWeight: 'bold', fill: '#ffffff', originX: 'center', originY: 'center'
+	updateRoomHeaderLayout() {
+        if (!this.canvas) return;
+        
+        const headerObj = this.canvas.getObjects().find(o => o.isRoomHeader);
+        if (!headerObj) return;
+
+        const ctx = this.getContext();
+        let totalDesks = 0;
+        let usedDesks = 0;
+
+        // Calculate counts
+        this.canvas.getObjects().forEach(obj => {
+            if (obj.isFurniture && obj.seats) {
+                totalDesks += obj.seats.length;
+                obj.seats.forEach(s => {
+                    if (s.assignedStudentId) usedDesks++;
+                });
+            }
         });
-        const frontBg = new fabric.Rect({
-            width: 64, height: 20, fill: '#64748b', rx: 4, ry: 4, originX: 'center', originY: 'center'
+
+        // Format names
+        let roomName = "CLASSROOM";
+        let periodName = "";
+        
+        if (ctx.roomId && DataStore.state.classrooms[ctx.roomId]) {
+            roomName = DataStore.state.classrooms[ctx.roomId].name.trim().toUpperCase();
+        }
+        if (ctx.periodId && DataStore.state.periods[ctx.periodId]) {
+            periodName = DataStore.state.periods[ctx.periodId].name.trim().toUpperCase();
+        }
+
+        // Apply specific formatting based on the active tab
+        if (ctx.periodId) {
+            headerObj.set({ text: `${periodName} - ${roomName} - ${usedDesks}/${totalDesks} Desks Used` });
+        } else {
+            headerObj.set({ text: `${roomName} - ${totalDesks} Student Desks` });
+        }
+        
+        this.canvas.requestRenderAll();
+    },
+
+    buildFrontMarker() {
+        // A clean, circular background badge
+        const bg = new fabric.Circle({
+            radius: 14, fill: '#ffffff', stroke: '#64748b', strokeWidth: 2, originX: 'center', originY: 'center'
         });
         
-        const frontGroup = new fabric.Group([frontBg, frontText], {
+        // A sleek 4-point compass star (Grey)
+        const star = new fabric.Path('M 0 -9 L 2 -2 L 9 0 L 2 2 L 0 9 L -2 2 L -9 0 L -2 -2 Z', {
+            fill: '#94a3b8', originX: 'center', originY: 'center'
+        });
+        
+        // Distinct Red pointer for "North/Front"
+        const north = new fabric.Path('M 0 -11 L 3 -2 L -3 -2 Z', {
+            fill: '#ef4444', originX: 'center', originY: 'center'
+        });
+
+        const frontGroup = new fabric.Group([bg, star, north], {
             originX: 'center', originY: 'center',
-            selectable: true, evented: true, hasControls: false, hoverCursor: 'grab', moveCursor: 'grabbing'
+            selectable: true, evented: true, hasControls: true, hoverCursor: 'grab', moveCursor: 'grabbing',
+            borderColor: '#ef4444', cornerColor: '#ffffff', cornerStrokeColor: '#ef4444', transparentCorners: false
+        });
+        
+        // Hide resizing handles, but keep the rotation handle active so the teacher can point it
+        frontGroup.setControlsVisibility({
+            mt: false, mb: false, ml: false, mr: false,
+            tl: false, tr: false, bl: false, br: false, mtr: true
         });
         
         frontGroup.isFurniture = true; 
@@ -630,6 +759,40 @@ export const CanvasEngine = {
                 const savedAssigns = localStorage.getItem(`CS_Period_${periodId}`);
                 if (savedAssigns) assignments = JSON.parse(savedAssigns);
             }
+
+            // --- NEW: ANCHOR CONFLICT RESOLUTION (GHOST & EVICTION PROTOCOL) ---
+            const currentPeriod = DataStore.state.periods[periodId];
+            const homeroomPeriod = DataStore.state.periods['period_homeroom_base'];
+            const homeroomRoomId = homeroomPeriod ? homeroomPeriod.classroomId : null;
+
+            // Only enforce anchors if this period physically takes place in the Homeroom
+            if (currentPeriod && roomId && roomId === homeroomRoomId) {
+                const activeRoster = currentPeriod.studentIds || [];
+                
+                activeRoster.forEach(studentId => {
+                    const student = DataStore.state.students[studentId];
+                    if (student && student.ownedSeatKey) {
+                        const targetKey = student.ownedSeatKey;
+
+                        // 1. Delete this student from any OLD seats they used to occupy in this period
+                        for (const key in assignments) {
+                            if (assignments[key].assignedStudentId === studentId && key !== targetKey) {
+                                assignments[key].assignedStudentId = null;
+                                assignments[key].isLocked = false;
+                            }
+                        }
+
+                        // 2. Force the student into their anchor, evicting anyone currently sitting there
+                        if (!assignments[targetKey]) {
+                            assignments[targetKey] = { assignedStudentId: studentId, isLocked: false };
+                        } else if (assignments[targetKey].assignedStudentId !== studentId) {
+                            assignments[targetKey].assignedStudentId = studentId;
+                            assignments[targetKey].isLocked = false; // Unlock so the teacher can re-evaluate
+                        }
+                    }
+                });
+            }
+            // -------------------------------------------------------------------
             
             manifest.forEach(f => {
                 let group = null;
@@ -637,6 +800,12 @@ export const CanvasEngine = {
                 if (f.furnitureType === 'front_marker') {
                     hasFrontMarker = true;
                     group = this.buildFrontMarker();
+                    
+                    if (periodId && assignments['front_marker_pos']) {
+                        f.left = assignments['front_marker_pos'].left;
+                        f.top = assignments['front_marker_pos'].top;
+                        f.angle = assignments['front_marker_pos'].angle || 0;
+                    }
                 }
                 else if (f.furnitureType === 'row' || f.furnitureType === 'pod') {
                     const count = f.blueprint.count || (f.furnitureType === 'pod' ? f.blueprint.length : 1);
@@ -648,14 +817,8 @@ export const CanvasEngine = {
                         let aId = assignments[key] ? assignments[key].assignedStudentId : null;
                         let isLocked = assignments[key] ? assignments[key].isLocked : false;
 
-                        const owner = Object.values(DataStore.state.students).find(st => st.ownedSeatKey === key);
-                        if (owner) {
-                            const currentPeriod = DataStore.state.periods[periodId];
-                            if (currentPeriod && currentPeriod.studentIds && currentPeriod.studentIds.includes(owner.id)) {
-                                aId = owner.id;
-                            }
-                        }
-
+                        // The old 'owner override' logic was safely removed here because 
+                        // the new protocol pre-cleans the entire assignment dictionary!
                         recreatedSeatsData.push({ seatIndex: i, assignedStudentId: aId, isLocked: isLocked });
                     }
 
@@ -681,6 +844,10 @@ export const CanvasEngine = {
             this.canvas.renderAll();
             this.enforceZIndex(); 
             this.refreshAllSeatIcons(); 
+            
+            // NEW: Automatically persist the cleaned anchor layout back to the hard drive immediately
+            this.saveLayout(); 
+            
             window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
         } catch (e) { 
             console.error("Layout restoration failed.", e); 
@@ -808,11 +975,11 @@ export const CanvasEngine = {
                 angle: this.isTextFlipped ? 180 : 0 
             });
             
-            const lockIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) - 6, top: dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const lockIcon = new fabric.Text('🔒', { 
+                left: offX + (dW / 2) - 6, top: dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
-            const anchorIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) + 6, top: dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const anchorIcon = new fabric.Text('⚓', { 
+                left: offX + (dW / 2) + 6, top: dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
 
             parts.push(rect, chair, label, lockIcon, anchorIcon);
@@ -868,11 +1035,11 @@ export const CanvasEngine = {
                 angle: this.isTextFlipped ? 180 : 0 
             });
 
-            const lockIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) - 6, top: offY - (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const lockIcon = new fabric.Text('🔒', { 
+                left: offX + (dW / 2) - 6, top: offY - (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
-            const anchorIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) + 6, top: offY - (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const anchorIcon = new fabric.Text('⚓', { 
+                left: offX + (dW / 2) + 6, top: offY - (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
 
             parts.push(rect, chair, label, lockIcon, anchorIcon);
@@ -906,11 +1073,11 @@ export const CanvasEngine = {
                 angle: this.isTextFlipped ? 180 : 0 
             });
 
-            const lockIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) - 6, top: offY + dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const lockIcon = new fabric.Text('🔒', { 
+                left: offX + (dW / 2) - 6, top: offY + dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
-            const anchorIcon = new fabric.Text('', { 
-                left: offX + (dW / 2) + 6, top: offY + dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false 
+            const anchorIcon = new fabric.Text('⚓', { 
+                left: offX + (dW / 2) + 6, top: offY + dL + (r / 2), fontSize: 10, originX: 'center', originY: 'center', selectable: false, opacity: 0 
             });
 
             parts.push(rect, chair, label, lockIcon, anchorIcon);
@@ -1205,6 +1372,13 @@ export const CanvasEngine = {
                 
                 if (f.furnitureType === 'front_marker') {
                     group = this.buildFrontMarker();
+                    
+                    // NEW: Keep minimap synced with period overrides
+                    if (periodId && assignments['front_marker_pos']) {
+                        f.left = assignments['front_marker_pos'].left;
+                        f.top = assignments['front_marker_pos'].top;
+                        f.angle = assignments['front_marker_pos'].angle || 0;
+                    }
                 }
                 else if (f.furnitureType === 'row' || f.furnitureType === 'pod') {
                     const count = f.blueprint.count || (f.furnitureType === 'pod' ? f.blueprint.length : 1);
@@ -1278,10 +1452,16 @@ export const CanvasEngine = {
         if (!this.canvas) return;
         this.canvas.getObjects().forEach(obj => {
             if (obj.isFurniture && obj.seats) {
+                // FIX: Un-rotate before update
+                const originalAngle = obj.angle;
+                obj.set({ angle: 0 });
+
                 obj.seats.forEach(s => {
                     if (s.textObj) s.textObj.set({ angle: isFlipped ? 180 : 0 });
                 });
+                
                 obj.addWithUpdate(); 
+                obj.set({ angle: originalAngle }); // Snap back
             }
         });
         this.canvas.requestRenderAll();
@@ -1307,7 +1487,13 @@ export const CanvasEngine = {
                     changed = true;
                 }
             });
-            if (changed) g.addWithUpdate(); 
+            if (changed) {
+                // FIX 1: Un-rotate before clearing old red highlights
+                const originalAngle = g.angle;
+                g.set({ angle: 0 });
+                g.addWithUpdate(); 
+                g.set({ angle: originalAngle });
+            }
         });
 
         const allSeatsPool = [];
@@ -1340,8 +1526,17 @@ export const CanvasEngine = {
                     if (isViolated || isDirectlyBehind) {
                         nodeA.seat.rectObj.set({ fill: '#ef4444' });
                         nodeB.seat.rectObj.set({ fill: '#ef4444' });
+                        
+                        // FIX 2: Un-rotate before applying new red highlights
+                        const angleA = nodeA.group.angle;
+                        nodeA.group.set({ angle: 0 });
                         nodeA.group.addWithUpdate(); 
+                        nodeA.group.set({ angle: angleA });
+
+                        const angleB = nodeB.group.angle;
+                        nodeB.group.set({ angle: 0 });
                         nodeB.group.addWithUpdate();
+                        nodeB.group.set({ angle: angleB });
                     }
                 }
             }
