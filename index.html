@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Classroom Suite v2</title>
+    <title>Classroom Seating Manager</title>
     
     <!-- 1. LOCAL LIBRARIES (Replaced the unpkg/cloudflare/jsdelivr links) -->
     <script src="./lib/tailwindcss.js"></script>
@@ -292,7 +292,8 @@
                     showSeatModal: false,
                     editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' },
 					showBulkAnchorModal: false,
-                    bulkAnchorData: []
+                    bulkAnchorData: [],
+					isBoardMode: false
                 };
             },
             watch: {

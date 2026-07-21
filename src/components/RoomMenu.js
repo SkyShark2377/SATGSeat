@@ -79,6 +79,9 @@ export const RoomMenu = {
                         <button @click="spawnAsset('smartboard')" class="w-full text-left px-3 py-1.5 border border-slate-600 rounded bg-slate-800 hover:bg-slate-700 font-semibold transition">📺 Smartboard</button>
                         <button @click="spawnAsset('door')" class="w-full text-left px-3 py-1.5 border border-red-800 rounded bg-red-950 hover:bg-red-900 font-semibold transition">🚪 Doorway</button>
                         <button @click="spawnAsset('window')" class="w-full text-left px-3 py-1.5 border border-sky-800 rounded bg-sky-950 hover:bg-sky-900 font-semibold transition">🪟 Window</button>
+						<button @click="spawnAsset('misc')" class="w-full text-left px-4 py-2 text-xs hover:bg-gray-100 transition border-b border-gray-100">
+							📦 Misc. Object
+						</button>
                     </div>
                 </div>
 

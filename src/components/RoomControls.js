@@ -16,6 +16,12 @@ export const RoomControls = {
                         <input v-model="form.name" placeholder="e.g., Room 204" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
                     </div>
                     
+                    <!-- NEW: Teacher Name Input -->
+                    <div>
+                        <label class="block text-[10px] text-slate-500 mb-1 font-bold uppercase">Teacher Name (Optional)</label>
+                        <input v-model="form.teacherName" placeholder="e.g., Mr. Smith" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
+                    </div>
+                    
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-[10px] text-slate-500 mb-1 font-bold uppercase">Width (ft)</label>
@@ -44,10 +50,16 @@ export const RoomControls = {
                          :class="ui.activeRoomId === id ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200 hover:bg-gray-50'">
                         
                         <div @click="ui.activeRoomId = id" class="px-3 py-2 flex justify-between items-center cursor-pointer" :class="ui.activeRoomId === id ? 'bg-blue-50' : ''">
-                            <span class="font-bold text-xs flex items-center gap-2 text-gray-800">
-                                <span v-if="room.isPrimaryHomeroom">🏠</span> {{ room.name }}
-                            </span>
-                            <span v-if="ui.activeRoomId === id" class="text-[10px] font-bold text-blue-600 uppercase">Active</span>
+                            
+                            <!-- UPDATED: Stack Room Name and Teacher Name -->
+                            <div class="flex flex-col">
+                                <span class="font-bold text-xs flex items-center gap-2 text-gray-800">
+                                    <span v-if="room.isPrimaryHomeroom">🏠</span> {{ room.name }}
+                                </span>
+                                <span v-if="room.teacherName" class="text-[10px] text-gray-500 font-medium mt-0.5">{{ room.teacherName }}</span>
+                            </div>
+                            
+                            <span v-if="ui.activeRoomId === id" class="text-[10px] font-bold text-blue-600 uppercase shrink-0">Active</span>
                         </div>
 
                         <div v-if="ui.activeRoomId === id" class="px-3 pb-3 pt-2 border-t border-blue-100 flex flex-col gap-2 bg-blue-50/30">
@@ -55,7 +67,14 @@ export const RoomControls = {
                                 <label class="block text-[9px] text-slate-500 mb-0.5 font-bold uppercase tracking-wider">Edit Name</label>
                                 <input v-model="room.name" @change="saveRoom(room)" class="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:border-blue-500 outline-none">
                             </div>
-                            <div class="grid grid-cols-2 gap-2">
+                            
+                            <!-- NEW: Edit Teacher Name -->
+                            <div>
+                                <label class="block text-[9px] text-slate-500 mb-0.5 font-bold uppercase tracking-wider">Edit Teacher</label>
+                                <input v-model="room.teacherName" @change="saveRoom(room)" class="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:border-blue-500 outline-none">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 mt-1">
                                 <div>
                                     <label class="block text-[9px] text-slate-500 mb-0.5 font-bold uppercase tracking-wider">Width (ft)</label>
                                     <input type="number" v-model.number="room.widthFeet" @change="updateDimensions" class="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:border-blue-500 outline-none">
@@ -83,23 +102,23 @@ export const RoomControls = {
         return {
             rooms: DataStore.getRooms(),
             ui: DataStore.state.ui,
-            form: { name: '', widthFeet: 30, lengthFeet: 25 }
+            // UPDATED: Include teacherName in the base form object
+            form: { name: '', teacherName: '', widthFeet: 30, lengthFeet: 25 }
         };
     },
     methods: {
         cleanName(name) {
-            // Strip out both variants of the emoji before it hits the database
-            return name ? name.replace(/[🏠匠]/g, '').trim() : '';
+            return name ? name.replace(/[🏠]/g, '').trim() : '';
         },
         createRoom() {
             this.form.name = this.cleanName(this.form.name);
             DataStore.addRoom(this.form);
-            this.form = { name: '', widthFeet: 30, lengthFeet: 25 };
+            // UPDATED: Reset teacherName to empty after creation
+            this.form = { name: '', teacherName: '', widthFeet: 30, lengthFeet: 25 };
         },
         saveRoom(room) {
             room.name = this.cleanName(room.name);
             DataStore.persist();
-            // Force the canvas to redraw so the header updates immediately
             window.dispatchEvent(new CustomEvent('force-canvas-redraw'));
         },
         updateDimensions() {

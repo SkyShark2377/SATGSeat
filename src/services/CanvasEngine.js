@@ -143,9 +143,13 @@ export const CanvasEngine = {
         let roomName = "CLASSROOM";
         let isHomeroom = false;
         let periodName = "";
+        let teacherName = ""; // NEW
         
         if (ctx.roomId && DataStore.state.classrooms[ctx.roomId]) {
-            roomName = DataStore.state.classrooms[ctx.roomId].name.trim().toUpperCase();
+            const r = DataStore.state.classrooms[ctx.roomId];
+            roomName = r.name.trim().toUpperCase();
+            teacherName = r.teacherName ? r.teacherName.trim().toUpperCase() : ""; // NEW
+            
             const hrPeriod = DataStore.state.periods['period_homeroom_base'];
             if (hrPeriod && hrPeriod.classroomId === ctx.roomId) {
                 isHomeroom = true;
@@ -156,27 +160,30 @@ export const CanvasEngine = {
             periodName = DataStore.state.periods[ctx.periodId].name.trim().toUpperCase();
         }
 
-        // 1. Combine Room and Period names
-        let displayText = (isHomeroom ? '🏠 ' : '') + roomName;
+        // Combine Room, Period, and Teacher names
+        let displayText = "";
+        if (teacherName) displayText += teacherName + "\n";
+        displayText += (isHomeroom ? '🏠 ' : '') + roomName;
         if (periodName) {
             displayText += " - " + periodName;
         }
 
-        // 2. Top-Left Aligned Combined Title
+        // Top-Left Aligned Combined Title
         const titleText = new fabric.Text(displayText, {
             left: 0,          
-            top: -12,         
+            top: -8, // Move down slightly so the text scales upward cleanly
             fontSize: 16, 
             fontFamily: 'sans-serif', 
             fontWeight: 'black', 
             fill: '#1e293b', 
             originX: 'left',  
-            originY: 'center',
+            originY: 'bottom', // NEW: Forces multiline text to stack upwards
             selectable: false, 
             evented: false, 
             isBackgroundElement: true,
 			isRoomHeader: true,
-            objectCaching: false 
+            objectCaching: false,
+            lineHeight: 1.2 
         });
         
         bgElements.push(titleText);
@@ -670,25 +677,40 @@ export const CanvasEngine = {
         });
 
         // Format names
+        // Format names
         let roomName = "CLASSROOM";
         let periodName = "";
+        let teacherName = ""; // NEW
+        let isHomeroom = false;
         
         if (ctx.roomId && DataStore.state.classrooms[ctx.roomId]) {
-            roomName = DataStore.state.classrooms[ctx.roomId].name.trim().toUpperCase();
+            const r = DataStore.state.classrooms[ctx.roomId];
+            roomName = r.name.trim().toUpperCase();
+            teacherName = r.teacherName ? r.teacherName.trim().toUpperCase() : ""; // NEW
+            
+            const hrPeriod = DataStore.state.periods['period_homeroom_base'];
+            if (hrPeriod && hrPeriod.classroomId === ctx.roomId) {
+                isHomeroom = true;
+            }
         }
         if (ctx.periodId && DataStore.state.periods[ctx.periodId]) {
             periodName = DataStore.state.periods[ctx.periodId].name.trim().toUpperCase();
         }
 
         // Apply specific formatting based on the active tab
+        let headerText = "";
+        if (teacherName) headerText += teacherName + "\n";
+        headerText += (isHomeroom ? '🏠 ' : '') + roomName;
+
         if (ctx.periodId) {
-            headerObj.set({ text: `${periodName} - ${roomName} - ${usedDesks}/${totalDesks} Desks Used` });
+            headerText += ` - ${periodName} - ${usedDesks}/${totalDesks} Desks Used`;
         } else {
-            headerObj.set({ text: `${roomName} - ${totalDesks} Student Desks` });
+            headerText += ` - ${totalDesks} Student Desks`;
         }
         
+        headerObj.set({ text: headerText });
         this.canvas.requestRenderAll();
-    },
+	},
 
     buildFrontMarker() {
         // A clean, circular background badge
@@ -1354,6 +1376,39 @@ export const CanvasEngine = {
 
         const floor = new fabric.Rect({ left: 0, top: 0, width: wPx, height: hPx, fill: '#ffffff', stroke: '#475569', strokeWidth: 3 });
         this.minimapCanvas.add(floor);
+		
+		// --- NEW: Add the Header Text to Minimap ---
+        let teacherName = room.teacherName ? room.teacherName.trim().toUpperCase() : "";
+        let roomName = room.name.trim().toUpperCase();
+        let periodName = "";
+        if (periodId && DataStore.state.periods[periodId]) {
+            periodName = DataStore.state.periods[periodId].name.trim().toUpperCase();
+        }
+        
+        let headerText = "";
+        if (teacherName) headerText += teacherName + "\n";
+        headerText += roomName;
+        if (periodName) headerText += " - " + periodName;
+
+        const titleText = new fabric.Textbox(headerText, {
+            left: 0, 
+            top: -8, 
+            width: wPx, // Force text to wrap if it exceeds the physical room width
+            fontSize: 16, 
+            fontFamily: 'sans-serif', 
+            fontWeight: 'black', 
+            fill: '#1e293b', 
+            originX: 'left', 
+            originY: 'bottom', 
+            selectable: false, 
+            evented: false, 
+            lineHeight: 1.2,
+            objectCaching: false 
+        });
+        
+        this.minimapCanvas.add(titleText);
+		
+        // -------------------------------------------
 
         const savedRoom = localStorage.getItem(`CS_Room_${roomId}`);
         if (!savedRoom) {
@@ -1417,14 +1472,19 @@ export const CanvasEngine = {
         const rect = container.getBoundingClientRect();
         if (rect.width < 10) return;
 
-        const scale = Math.min(rect.width / roomW, rect.height / roomH) * 0.90; 
+        // NEW: Add the same 40px vertical buffer used in the main canvas for the header
+        const totalH = roomH + 40;
+
+        const scale = Math.min(rect.width / roomW, rect.height / totalH) * 0.90; 
         
         this.minimapCanvas.setDimensions({ width: rect.width, height: rect.height });
         this.minimapCanvas.setZoom(scale);
 
         const vpt = this.minimapCanvas.viewportTransform;
         vpt[4] = (rect.width - (roomW * scale)) / 2;
-        vpt[5] = (rect.height - (roomH * scale)) / 2;
+        
+        // NEW: Shift the room down into the buffer space so the text isn't cut off at the top
+        vpt[5] = ((rect.height - (totalH * scale)) / 2) + (40 * scale);
         
         this.minimapCanvas.renderAll(); 
     },
@@ -1627,5 +1687,61 @@ export const CanvasEngine = {
         
         const safeName = className.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         doc.save(`Seating_Chart_${safeName}.pdf`);
+    },
+	
+	setBoardMode(isActive) {
+        if (!this.canvas) return;
+
+        // 1. Toggle the background
+        if (isActive) {
+            this.canvas.backgroundColor = '#ffffff';
+        } else {
+            this.canvas.backgroundColor = 'transparent'; 
+        }
+
+        // 2. Strip icons and freeze furniture
+        this.canvas.getObjects().forEach(obj => {
+            if (obj.furnitureType === 'front_marker') {
+                obj.set({ opacity: isActive ? 0 : 1 });
+            }
+
+            if (obj.isFurniture) {
+                obj.set({ selectable: !isActive, evented: !isActive });
+
+                if (obj.seats) {
+                    obj.seats.forEach(s => {
+                        if (s.lockIconObj) {
+                            if (isActive) s.lockIconObj.set({ opacity: 0 });
+                            else s.lockIconObj.set({ opacity: s.isLocked ? 1 : 0 });
+                        }
+                        if (s.anchorIconObj) {
+                            const isHomeroomActive = DataStore.state.ui.activePeriodId === 'period_homeroom_base';
+                            const isAnchored = Object.values(DataStore.state.students).some(st => st.ownedSeatKey === obj.furnitureId + '_' + s.seatIndex);
+                            
+                            if (isActive) s.anchorIconObj.set({ opacity: 0 });
+                            else s.anchorIconObj.set({ opacity: (isAnchored && isHomeroomActive) ? 1 : 0 });
+                        }
+                        
+                        // NEW: Strip color highlights to make the board perfectly clean
+                        if (isActive && s.rectObj) {
+                            s.rectObj.set({ fill: '#fef3c7', stroke: '#d97706', strokeWidth: 1.5 });
+                        }
+                    });
+                    
+                    const originalAngle = obj.angle;
+                    obj.set({ angle: 0 });
+                    obj.addWithUpdate();
+                    obj.set({ angle: originalAngle });
+                }
+            }
+        });
+
+        // NEW: Restore the restriction/preference highlights when exiting board mode
+        if (!isActive) {
+            const minSep = DataStore.state.settings.minSeparationInches || 48;
+            this.validateSeatingLayout(DataStore.state.students, minSep);
+        } else {
+            this.canvas.requestRenderAll();
+        }
     }
 };

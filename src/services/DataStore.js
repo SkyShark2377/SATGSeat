@@ -22,7 +22,8 @@ export const DataStore = {
             activeRoomId: null,   
             layoutNonce: 0,       
             editingStudentId: null,
-            activePeriodId: 'period_homeroom_base'
+            activePeriodId: 'period_homeroom_base',
+			isBoardMode: false
         }
     }),
 
@@ -191,8 +192,9 @@ export const DataStore = {
         this.state.classrooms[id] = {
             id,
             name: roomData.name,
-            widthFeet: roomData.widthFeet || 30,
-            lengthFeet: roomData.lengthFeet || 25
+			teacherName: roomData.teacherName || '',
+            widthFeet: roomData.widthFeet || 25,
+            lengthFeet: roomData.lengthFeet || 35
         };
         this.state.ui.activeRoomId = id;
         this.persist();

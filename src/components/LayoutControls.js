@@ -65,6 +65,14 @@ export const LayoutControls = {
                 <button @click="resetView" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-1.5 rounded shadow cursor-pointer transition">🔍 Reset</button>
             </div>
             
+			<!-- CLEAN BOARD TOGGLE -->
+            <button @click="toggleBoardMode" 
+                    :class="ui.isBoardMode ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'"
+                    class="w-full font-bold py-2 rounded shadow-sm cursor-pointer transition text-xs flex justify-center items-center gap-2 uppercase tracking-wider shrink-0">
+                <span v-if="!ui.isBoardMode">📺 Enter Board Mode</span>
+                <span v-else>🛠️ Exit Board Mode</span>
+            </button>
+			
             <button @click="printLayout" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black tracking-widest uppercase py-2 rounded shadow-sm cursor-pointer transition shrink-0">
                 🖨️ Export PDF
             </button>
@@ -241,6 +249,11 @@ export const LayoutControls = {
                 const count = CanvasEngine.anchorCurrentSeats();
                 alert(`Successfully anchored ${count} students to their current seats.`);
             }
+        },
+		
+		toggleBoardMode() {
+            this.ui.isBoardMode = !this.ui.isBoardMode;
+            CanvasEngine.setBoardMode(this.ui.isBoardMode);
         },
 		
 		// --- REDRAW ON DROPDOWN CHANGE ---
