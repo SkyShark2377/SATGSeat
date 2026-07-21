@@ -4,7 +4,7 @@ import { CanvasEngine } from '../services/CanvasEngine.js';
 
 export const RoomMenu = {
     template: `
-        <div class="flex flex-col h-full text-white w-80 bg-[#1e293b] shadow-xl shrink-0 border-l border-slate-800">
+        <div class="flex flex-col h-full text-white w-84 bg-[#1e293b] shadow-xl shrink-0 border-l border-slate-800">
             
             <div class="p-4 border-b border-slate-700 shrink-0 bg-slate-900/50">
                 <h2 class="font-bold text-lg mb-1 flex items-center gap-2">
@@ -16,6 +16,13 @@ export const RoomMenu = {
 
             <div class="p-4 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-5">
 
+				<div>
+                    <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Alignment</h3>
+                    <button @click="handleToggleSnap" :class="settings.isSnapEnabled ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'" class="w-full font-bold py-1.5 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider border border-slate-600">
+                        Snap: {{ settings.isSnapEnabled ? 'ON' : 'OFF' }}
+                    </button>
+                </div>
+				
                 <!-- COMPACTED DEFAULT DESK SIZE -->
                 <div>
                     <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Default Desk Size (inches)</h3>
@@ -113,6 +120,12 @@ export const RoomMenu = {
                 CanvasEngine.loadLayout(this.ui.activeRoomId); 
                 alert(`Successfully resized ${count} desks/pods.`);
             }
+        },
+		saveSettings() { DataStore.persist(); },
+        handleToggleSnap() { // NEW
+            this.settings.isSnapEnabled = !this.settings.isSnapEnabled;
+            CanvasEngine.setSnap(this.settings.isSnapEnabled);
+            this.saveSettings();
         }
     }
 };

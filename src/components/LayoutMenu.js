@@ -4,11 +4,10 @@ import { CanvasEngine } from '../services/CanvasEngine.js';
 
 export const LayoutMenu = {
     template: `
-        <div class="flex flex-col h-full text-white w-80 bg-[#1e293b] shadow-xl shrink-0 border-l border-slate-800">
+        <div class="flex flex-col h-full text-white w-84 bg-[#1e293b] shadow-xl shrink-0 border-l border-slate-800">
             
             <div class="p-4 border-b border-slate-700 shrink-0 bg-slate-900/50">
                 <h2 class="font-bold text-lg mb-1 flex items-center gap-2">
-                    <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm shadow">»</span>
                     Layout Menu
                 </h2>
                 <p class="text-[10px] text-slate-400 font-bold tracking-wider uppercase">Spawn Furniture & Assets</p>
@@ -16,7 +15,15 @@ export const LayoutMenu = {
 
             <div class="p-4 flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-5">
                 
-                <!-- COMPACTED GLOBAL DESK SIZE -->
+                <!-- SNAP TOGGLE -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Alignment</h3>
+                    <button @click="handleToggleSnap" :class="settings.isSnapEnabled ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-300'" class="w-full font-bold py-1.5 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider border border-slate-600">
+                        Snap: {{ settings.isSnapEnabled ? 'ON' : 'OFF' }}
+                    </button>
+                </div>
+
+                <!-- GLOBAL DESK SIZE -->
                 <div>
                     <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Global Desk Size (inches)</h3>
                     <div class="flex gap-2 bg-slate-800/50 p-2 rounded border border-slate-700/50">
@@ -31,7 +38,7 @@ export const LayoutMenu = {
                     </div>
                 </div>
 
-                <!-- COMPACTED DESKS & PODS -->
+                <!-- ADD DESKS & PODS -->
                 <div>
                     <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Add Desks & Pods</h3>
                     <div class="flex flex-col gap-1.5">
@@ -54,16 +61,16 @@ export const LayoutMenu = {
                     </div>
                 </div>
 
-                <!-- RENAMED TO FURNITURE -->
+                <!-- FURNITURE -->
                 <div>
                     <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Furniture</h3>
                     <div class="flex flex-col gap-1.5 text-xs">
                         
                         <button @click="spawnAsset('teacher_desk')" class="w-full text-left px-3 py-1.5 border border-slate-600 rounded bg-slate-700 hover:bg-slate-600 font-semibold transition">🖥️ Teacher Desk</button>
                         <button @click="spawnAsset('shelf')" class="w-full text-left px-3 py-1.5 border border-amber-600 rounded bg-amber-800 hover:bg-amber-700 font-semibold transition">🗄️ Open Shelf</button>
+                        <button @click="spawnAsset('bookshelf')" class="w-full text-left px-3 py-1.5 border border-amber-700 rounded bg-amber-900 hover:bg-amber-800 font-semibold transition">📚 Bookshelf</button>
                         <button @click="spawnAsset('cabinet')" class="w-full text-left px-3 py-1.5 border border-slate-500 rounded bg-slate-600 hover:bg-slate-500 font-semibold transition">🚪 Tall Cabinet</button>
                         <button @click="spawnAsset('locker')" class="w-full text-left px-3 py-1.5 border border-slate-500 rounded bg-slate-600 hover:bg-slate-500 font-semibold transition">🔐 Lockers</button>
-                        <button @click="spawnAsset('bookshelf')" class="w-full text-left px-3 py-1.5 border border-amber-700 rounded bg-amber-900 hover:bg-amber-800 font-semibold transition">📚 Bookshelf</button>
                         
                         <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Flooring & Rugs</div>
                         <button @click="spawnAsset('rug')" class="w-full text-left px-3 py-1.5 border border-sky-700 rounded bg-sky-900 hover:bg-sky-800 font-semibold transition">🟦 Rect Rug / Zone</button>
@@ -74,9 +81,9 @@ export const LayoutMenu = {
                         <button @click="spawnAsset('smartboard')" class="w-full text-left px-3 py-1.5 border border-slate-600 rounded bg-slate-800 hover:bg-slate-700 font-semibold transition">📺 Smartboard</button>
                         <button @click="spawnAsset('door')" class="w-full text-left px-3 py-1.5 border border-red-800 rounded bg-red-950 hover:bg-red-900 font-semibold transition">🚪 Doorway</button>
                         <button @click="spawnAsset('window')" class="w-full text-left px-3 py-1.5 border border-sky-800 rounded bg-sky-950 hover:bg-sky-900 font-semibold transition">🪟 Window</button>
-						<button @click="spawnAsset('misc')" class="w-full text-left px-4 py-2 text-xs hover:bg-gray-100 transition border-b border-gray-100">
-							📦 Misc. Object
-						</button>
+                        
+                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Custom Objects</div>
+                        <button @click="spawnAsset('misc')" class="w-full text-left px-3 py-1.5 border border-slate-500 rounded bg-slate-600 hover:bg-slate-500 font-semibold transition">📦 Misc. Object</button>
                     </div>
                 </div>
 
@@ -92,6 +99,11 @@ export const LayoutMenu = {
     },
     methods: {
         saveSettings() { DataStore.persist(); },
+        handleToggleSnap() {
+            this.settings.isSnapEnabled = !this.settings.isSnapEnabled;
+            CanvasEngine.setSnap(this.settings.isSnapEnabled);
+            this.saveSettings();
+        },
         spawnRow(count) { CanvasEngine.spawnRow(count, this.settings.globalDeskWidth, this.settings.globalDeskLength); },
         spawnPod(length) { CanvasEngine.spawnPod(length, this.settings.globalDeskWidth, this.settings.globalDeskLength); },
         spawnAsset(type) { CanvasEngine.spawnAsset(type); }

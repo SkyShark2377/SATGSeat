@@ -916,9 +916,9 @@ export const CanvasEngine = {
             case 'cabinet': width = 36; height = 24; fill = '#e5e7eb'; stroke = '#64748b'; label = 'Cabinet'; textFill = '#334155'; break;
             case 'locker': width = 72; height = 18; fill = '#94a3b8'; stroke = '#475569'; label = 'Lockers'; textFill = '#1e293b'; break;
             case 'bookshelf': width = 48; height = 18; fill = '#fcd34d'; stroke = '#b45309'; label = 'Bookshelf'; textFill = '#78350f'; break;
-            case 'rug': width = 120; height = 96; fill = 'rgba(56, 189, 248, 0.2)'; stroke = '#0284c7'; label = 'Rect Rug'; textFill = '#0369a1'; break;
-            case 'rug_circle': width = 96; height = 96; fill = 'rgba(56, 189, 248, 0.2)'; stroke = '#0284c7'; label = 'Round Rug'; textFill = '#0369a1'; shape = 'circle'; break;
-            case 'rug_half': width = 96; height = 48; fill = 'rgba(56, 189, 248, 0.2)'; stroke = '#0284c7'; label = 'Half Rug'; textFill = '#0369a1'; shape = 'half_circle'; break;
+            case 'rug': width = 120; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Rect Rug'; textFill = '#0369a1'; break;
+            case 'rug_circle': width = 96; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Round Rug'; textFill = '#0369a1'; shape = 'circle'; break;
+            case 'rug_half': width = 96; height = 48; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Half Rug'; textFill = '#0369a1'; shape = 'half_circle'; break;
             case 'table_round': width = 48; height = 48; fill = '#cbd5e1'; stroke = '#64748b'; label = 'Round Table'; textFill = '#334155'; shape = 'circle'; break;
             case 'table_half': width = 60; height = 30; fill = '#cbd5e1'; stroke = '#64748b'; label = 'Half Table'; textFill = '#334155'; shape = 'half_circle'; break;
             case 'smartboard': width = 96; height = 8; fill = '#1e293b'; stroke = '#0f172a'; label = 'Smartboard'; textFill = '#ffffff'; break;
@@ -1268,6 +1268,9 @@ export const CanvasEngine = {
                             label: activeObj.blueprint.label,
                             width: activeObj.blueprint.width,
                             height: activeObj.blueprint.height,
+							fill: activeObj.blueprint.fill,
+                            stroke: activeObj.blueprint.stroke,
+                            textFill: activeObj.blueprint.textFill,
                             isLocked: activeObj.isPositionLocked || false
                         }
                     }));
@@ -1335,15 +1338,25 @@ export const CanvasEngine = {
         });
     },
     // test
-    updateAssetProperties(furnitureId, newLabel, newWidth, newHeight, isLocked) {
-        const obj = this.canvas.getObjects().find(o => o.furnitureId === furnitureId);
+    updateAssetProperties(config) {
+        const obj = this.canvas.getObjects().find(o => o.furnitureId === config.id);
         if (obj && !obj.seats && obj.blueprint) {
+            
+            // Fallback to existing blueprint colors in case the user edits an older asset
+            const fill = config.fill || obj.blueprint.fill;
+            const stroke = config.stroke || obj.blueprint.stroke;
+            const textFill = config.textFill || obj.blueprint.textFill;
+
             const newGroup = this.buildAssetObject(
-                obj.furnitureType, Math.abs(newWidth), Math.abs(newHeight), 
-                obj.blueprint.fill, obj.blueprint.stroke, newLabel, obj.blueprint.textFill, obj.blueprint.shape
+                obj.furnitureType, Math.abs(config.width), Math.abs(config.height), 
+                fill, stroke, config.label, textFill, obj.blueprint.shape 
             );
-            newGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, furnitureId: obj.furnitureId, isPositionLocked: isLocked });
-            newGroup.set({ lockMovementX: isLocked, lockMovementY: isLocked, lockRotation: isLocked, lockScalingX: isLocked, lockScalingY: isLocked, hasControls: !isLocked });
+            
+            // Force strict boolean
+            const lockState = !!config.isLocked; 
+            
+            newGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, furnitureId: obj.furnitureId, isPositionLocked: lockState });
+            newGroup.set({ lockMovementX: lockState, lockMovementY: lockState, lockRotation: lockState, lockScalingX: lockState, lockScalingY: lockState, hasControls: !lockState });
             
             this.canvas.remove(obj); 
             this.canvas.add(newGroup); 

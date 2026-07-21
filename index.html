@@ -48,17 +48,32 @@
 
     <div id="app" v-cloak class="flex w-full h-full">
 
-        <aside class="w-72 bg-white flex flex-col border-r border-gray-300 shadow-sm z-10 shrink-0">
+        <aside class="w-84 bg-white flex flex-col border-r border-gray-300 shadow-sm z-10 shrink-0">
+		
             <!-- CONSOLIDATED HEADER START -->
-            <div class="p-4 border-b border-gray-200 flex flex-col gap-3 shrink-0">
+            <div class="p-4 border-b border-gray-200 flex flex-col gap-3 shrink-0 relative">
                 <div class="flex justify-between items-center">
-                    <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
-                    <button @click="showHelpModal = true" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-bold transition">?</button>
+                    <div class="flex items-baseline gap-2">
+                        <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
+                        <span class="text-[10px] text-gray-400 font-bold tracking-wider">v2.0.1</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="showHelpModal = true" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-bold transition">?</button>
+                        <!-- NEW: Settings Toggle Button -->
+                        <button @click="showGlobalMenu = !showGlobalMenu" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-bold transition">⚙️</button>
+                    </div>
                 </div>
-                <div class="flex gap-2">
-                    <button @click="$refs.restoreInput.click()" class="text-[9px] bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-300 px-2 py-1 rounded font-black tracking-widest shadow-sm transition flex-1 cursor-pointer">RESTORE</button>
+                
+                <!-- NEW: Settings Dropdown -->
+                <div v-if="showGlobalMenu" class="absolute top-12 right-4 w-56 bg-white border border-gray-200 rounded-lg shadow-2xl z-[100] flex flex-col py-1 overflow-hidden">
+                    <button @click="$refs.restoreInput.click(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">📂 Restore Backup</button>
                     <input type="file" ref="restoreInput" @change="handleAppRestore" accept=".json" class="hidden">
-                    <button @click="handleAppBackup" class="text-[9px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300 px-2 py-1 rounded font-black tracking-widest shadow-sm transition flex-1 cursor-pointer">BACKUP</button>
+                    <button @click="handleAppBackup(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">💾 Save Backup</button>
+                    
+                    <hr class="my-1 border-gray-200">
+                    
+                    <button @click="exportSeatingPDF(); showGlobalMenu = false" :disabled="currentTab !== 'seating'" :class="currentTab === 'seating' ? 'text-emerald-700 hover:bg-emerald-50' : 'text-gray-400 cursor-not-allowed'" class="px-4 py-2.5 text-left text-xs font-bold flex items-center gap-2 transition">🖨️ Export PDF (Seating)</button>
+                    <button @click="toggleGlobalPOV(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-purple-700 hover:bg-purple-50 flex items-center gap-2 transition">🔄 POV: {{ store.settings.isTextFlipped ? 'Board' : 'Teacher' }}</button>
                 </div>
             </div>
             <!-- CONSOLIDATED HEADER END -->
@@ -142,7 +157,23 @@
                             <input type="number" v-model.number="editingAsset.height" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm">
                         </div>
                     </div>
-
+					
+					<!-- NEW: Color Pickers -->
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fill</label>
+                            <input type="color" v-model="editingAsset.fill" class="w-full h-8 cursor-pointer rounded border border-slate-300 p-0.5 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Border</label>
+                            <input type="color" v-model="editingAsset.stroke" class="w-full h-8 cursor-pointer rounded border border-slate-300 p-0.5 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Text</label>
+                            <input type="color" v-model="editingAsset.textFill" class="w-full h-8 cursor-pointer rounded border border-slate-300 p-0.5 bg-white">
+                        </div>
+                    </div>
+					
                     <div class="mt-2 bg-white border border-slate-200 p-3 rounded shadow-sm flex items-center justify-between cursor-pointer" @click="editingAsset.isLocked = !editingAsset.isLocked">
                         <div>
                             <span class="text-xs font-bold text-slate-700 block">Lock Position & Size</span>
@@ -288,12 +319,13 @@
                     currentTab: 'seating',
                     store: DataStore.state,
                     showAssetModal: false,
-                    editingAsset: { id: '', label: '', width: 0, height: 0, isLocked: false },
+                    editingAsset: { id: '', label: '', width: 0, height: 0, fill: '#ffffff', stroke: '#000000', textFill: '#000000', isLocked: false }, // UPDATED
                     showSeatModal: false,
                     editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' },
 					showBulkAnchorModal: false,
                     bulkAnchorData: [],
-					isBoardMode: false
+					isBoardMode: false,
+					showGlobalMenu: false,
                 };
             },
             watch: {
@@ -359,6 +391,20 @@
                         event.target.value = ''; 
                     }
                 },
+				
+				// --- GLOBAL HEADER ACTIONS ---
+                exportSeatingPDF() {
+                    if (this.currentTab !== 'seating') return;
+                    const period = this.store.periods[this.store.ui.activePeriodId];
+                    const periodName = period ? period.name : 'Custom_Layout';
+                    CanvasEngine.exportToPDF(periodName);
+                },
+                toggleGlobalPOV() {
+                    this.store.settings.isTextFlipped = !this.store.settings.isTextFlipped;
+                    CanvasEngine.flipSeatText(this.store.settings.isTextFlipped);
+                    DataStore.persist();
+                },
+				
                 // -----------------------------------
 
                 refreshCanvasEnvironment() {
@@ -387,13 +433,8 @@
                     }
                 },
                 handleSaveAssetEdit() {
-                    CanvasEngine.updateAssetProperties(
-                        this.editingAsset.id,
-                        this.editingAsset.label,
-                        this.editingAsset.width,
-                        this.editingAsset.height,
-                        this.editingAsset.isLocked
-                    );
+                    // Pass the entire object as a single payload
+                    CanvasEngine.updateAssetProperties(this.editingAsset);
                     this.showAssetModal = false;
                 },
                 evictStudentFromSeat() {

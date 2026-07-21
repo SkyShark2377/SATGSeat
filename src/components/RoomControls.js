@@ -16,7 +16,6 @@ export const RoomControls = {
                         <input v-model="form.name" placeholder="e.g., Room 204" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
                     </div>
                     
-                    <!-- NEW: Teacher Name Input -->
                     <div>
                         <label class="block text-[10px] text-slate-500 mb-1 font-bold uppercase">Teacher Name (Optional)</label>
                         <input v-model="form.teacherName" placeholder="e.g., Mr. Smith" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
@@ -51,7 +50,6 @@ export const RoomControls = {
                         
                         <div @click="ui.activeRoomId = id" class="px-3 py-2 flex justify-between items-center cursor-pointer" :class="ui.activeRoomId === id ? 'bg-blue-50' : ''">
                             
-                            <!-- UPDATED: Stack Room Name and Teacher Name -->
                             <div class="flex flex-col">
                                 <span class="font-bold text-xs flex items-center gap-2 text-gray-800">
                                     <span v-if="room.isPrimaryHomeroom">🏠</span> {{ room.name }}
@@ -68,7 +66,6 @@ export const RoomControls = {
                                 <input v-model="room.name" @change="saveRoom(room)" class="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:border-blue-500 outline-none">
                             </div>
                             
-                            <!-- NEW: Edit Teacher Name -->
                             <div>
                                 <label class="block text-[9px] text-slate-500 mb-0.5 font-bold uppercase tracking-wider">Edit Teacher</label>
                                 <input v-model="room.teacherName" @change="saveRoom(room)" class="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:border-blue-500 outline-none">
@@ -96,13 +93,19 @@ export const RoomControls = {
                 </div>
             </div>
 
+            <!-- NEW: ZOOM CONTROLS -->
+            <div class="grid grid-cols-3 gap-2 shrink-0 mt-auto pt-4 border-t border-gray-200">
+                <button @click="zoomIn" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-1.5 rounded shadow cursor-pointer transition">➕ Zoom</button>
+                <button @click="zoomOut" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-1.5 rounded shadow cursor-pointer transition">➖ Zoom</button>
+                <button @click="resetView" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-1.5 rounded shadow cursor-pointer transition">🔍 Reset</button>
+            </div>
+
         </div>
     `,
     data() {
         return {
             rooms: DataStore.getRooms(),
             ui: DataStore.state.ui,
-            // UPDATED: Include teacherName in the base form object
             form: { name: '', teacherName: '', widthFeet: 30, lengthFeet: 25 }
         };
     },
@@ -113,7 +116,6 @@ export const RoomControls = {
         createRoom() {
             this.form.name = this.cleanName(this.form.name);
             DataStore.addRoom(this.form);
-            // UPDATED: Reset teacherName to empty after creation
             this.form = { name: '', teacherName: '', widthFeet: 30, lengthFeet: 25 };
         },
         saveRoom(room) {
@@ -129,6 +131,11 @@ export const RoomControls = {
             const newId = DataStore.duplicateRoom(id);
             if (newId) CanvasEngine.duplicateBlueprint(id, newId);
         },
-        deleteRoom(id) { DataStore.deleteRoom(id); }
+        deleteRoom(id) { DataStore.deleteRoom(id); },
+        
+        // --- NEW: CAMERA CONTROLS ---
+        zoomIn() { CanvasEngine.canvas.setZoom(CanvasEngine.canvas.getZoom() * 1.25); },
+        zoomOut() { CanvasEngine.canvas.setZoom(Math.max(0.1, CanvasEngine.canvas.getZoom() * 0.8)); },
+        resetView() { CanvasEngine.recalculateDimensions(); }
     }
 };

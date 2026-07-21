@@ -6,7 +6,6 @@ export const LayoutControls = {
     template: `
         <div class="flex flex-col gap-4 w-full h-full text-xs">
             
-            <!-- NEW WARNING NOTE -->
             <div class="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded-lg text-[10px] leading-tight text-center shadow-sm">
                 ⚠️ <strong>Note:</strong> Furniture changes made in this tab are temporary. To permanently alter the physical room, use the <strong>Rooms</strong> tab.
             </div>
@@ -23,7 +22,6 @@ export const LayoutControls = {
             <div v-if="ui.activePeriodId === 'period_homeroom_base'" class="bg-indigo-50 border border-indigo-200 p-3 rounded-lg flex flex-col gap-2 shrink-0">
                 <span class="font-bold text-indigo-900 uppercase text-[10px] tracking-wider">🏠 Homeroom Anchors</span>
                 
-                <!-- NEW TOGGLE BUTTON -->
                 <button @click="toggleHomeroomAnchors" class="w-full font-bold py-2 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider" :class="hasAnchors ? 'bg-indigo-200 hover:bg-indigo-300 text-indigo-800' : 'bg-indigo-600 hover:bg-indigo-700 text-white'">
                     {{ hasAnchors ? '🔓 Clear All Anchors' : '⚓ Anchor Current Seats' }}
                 </button>
@@ -65,18 +63,6 @@ export const LayoutControls = {
                 <button @click="resetView" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-1.5 rounded shadow cursor-pointer transition">🔍 Reset</button>
             </div>
             
-			<!-- CLEAN BOARD TOGGLE -->
-            <button @click="toggleBoardMode" 
-                    :class="ui.isBoardMode ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'"
-                    class="w-full font-bold py-2 rounded shadow-sm cursor-pointer transition text-xs flex justify-center items-center gap-2 uppercase tracking-wider shrink-0">
-                <span v-if="!ui.isBoardMode">📺 Enter Board Mode</span>
-                <span v-else>🛠️ Exit Board Mode</span>
-            </button>
-			
-            <button @click="printLayout" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black tracking-widest uppercase py-2 rounded shadow-sm cursor-pointer transition shrink-0">
-                🖨️ Export PDF
-            </button>
-
             <div class="flex-1 flex flex-col min-h-[150px] border border-gray-200 rounded-lg bg-gray-50 overflow-hidden shadow-sm">
                 <div class="flex justify-between items-center bg-gray-100 border-b border-gray-200 px-3 py-2 shrink-0">
                     <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Class Roster</span>
@@ -115,20 +101,6 @@ export const LayoutControls = {
                 </div>
             </div>
 
-            <div class="mt-auto pt-4 border-t border-gray-200 flex flex-col gap-2 shrink-0">
-                <div class="flex gap-2">
-                    <button @click="handleToggleSnap" :class="settings.isSnapEnabled ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'" class="flex-1 font-bold py-2 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider">
-                        Snap: {{ settings.isSnapEnabled ? 'ON' : 'OFF' }}
-                    </button>
-                    <button @click="handleToggleDeskLock" :class="settings.isDeskLockEnabled ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-600'" class="flex-1 font-bold py-2 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider">
-                        Desks: {{ settings.isDeskLockEnabled ? 'LOCKED' : 'UNLOCKED' }}
-                    </button>
-                    <button @click="handleToggleTextFlip" :class="settings.isTextFlipped ? 'bg-purple-600 text-white' : 'bg-slate-700 text-white'" class="flex-1 font-bold py-2 rounded shadow-sm cursor-pointer transition text-[10px] uppercase tracking-wider">
-                        POV: {{ settings.isTextFlipped ? 'TEACHER' : 'BOARD' }}
-                    </button>
-                </div>
-            </div>
-
             <div v-if="showReassignModal" class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
                 <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
                     <div class="bg-blue-900 text-white px-5 py-3 flex justify-between items-center">
@@ -157,32 +129,20 @@ export const LayoutControls = {
         };
     },
     computed: {
-        activePeriod() {
-            return this.ui.activePeriodId ? this.periods[this.ui.activePeriodId] : null;
-        },
-        seatedStudentIds() {
-            this.ui.layoutNonce; 
-            return CanvasEngine.getSeatedStudentIds();
-        },
+        activePeriod() { return this.ui.activePeriodId ? this.periods[this.ui.activePeriodId] : null; },
+        seatedStudentIds() { this.ui.layoutNonce; return CanvasEngine.getSeatedStudentIds(); },
         rosterStudents() {
             this.ui.layoutNonce; 
             if (!this.activePeriod) return [];
-            
             const assignedIds = this.activePeriod.studentIds || [];
-            
             return Object.values(DataStore.state.students)
                 .filter(s => assignedIds.includes(s.id))
                 .sort((a, b) => a.name.localeCompare(b.name));
         },
-        unseatedCount() {
-            return this.rosterStudents.filter(s => !this.seatedStudentIds.includes(s.id)).length;
-        },
-        hasAnchors() {
-            return Object.values(DataStore.state.students).some(s => s.ownedSeatKey !== null);
-        }
+        unseatedCount() { return this.rosterStudents.filter(s => !this.seatedStudentIds.includes(s.id)).length; },
+        hasAnchors() { return Object.values(DataStore.state.students).some(s => s.ownedSeatKey !== null); }
     },
     mounted() {
-        // NEW: Sync database state and force layout load when switching to this tab
         this.ui.currentTab = 'seating';
         DataStore.persist();
         setTimeout(() => CanvasEngine.loadLayout(), 50);
@@ -194,11 +154,6 @@ export const LayoutControls = {
         window.addEventListener('canvas-layout-moving', () => {
             this.triggerValidation();
         });
-
-        if (this.settings.isSnapEnabled === undefined) this.settings.isSnapEnabled = true;
-        CanvasEngine.setSnap(this.settings.isSnapEnabled);
-        CanvasEngine.setDeskLock(this.settings.isDeskLockEnabled);
-        CanvasEngine.flipSeatText(this.settings.isTextFlipped);
     },
     methods: {
         handleDragStart(event, studentId) {
@@ -214,12 +169,10 @@ export const LayoutControls = {
         // --- AUTO ASSIGN LOGIC ---
         handleAutoAssign() {
             if (this.rosterStudents.length === 0) return;
-            
             if (this.unseatedCount === 0) {
                 this.showReassignModal = true;
                 return;
             }
-            
             const unseated = this.rosterStudents.filter(s => !this.seatedStudentIds.includes(s.id));
             CanvasEngine.autoAssign(unseated, this.settings.genderDistributionMode);
         },
@@ -227,7 +180,6 @@ export const LayoutControls = {
         forceReassign() {
             this.showReassignModal = false;
             CanvasEngine.clearSeats(); 
-            
             setTimeout(() => {
                 const newlyUnseated = this.rosterStudents.filter(s => !this.seatedStudentIds.includes(s.id));
                 CanvasEngine.autoAssign(newlyUnseated, this.settings.genderDistributionMode);
@@ -238,7 +190,6 @@ export const LayoutControls = {
             if (confirm("Clear all unlocked seats in this layout?")) CanvasEngine.clearSeats();
         },
         
-        // --- NEW TOGGLE HANDLER ---
         toggleHomeroomAnchors() {
             if (this.hasAnchors) {
                 if (confirm("Clear all Homeroom Anchor assignments globally?")) {
@@ -251,48 +202,14 @@ export const LayoutControls = {
             }
         },
 		
-		toggleBoardMode() {
-            this.ui.isBoardMode = !this.ui.isBoardMode;
-            CanvasEngine.setBoardMode(this.ui.isBoardMode);
-        },
-		
-		// --- REDRAW ON DROPDOWN CHANGE ---
 		handlePeriodChange() {
             DataStore.persist();
             CanvasEngine.loadLayout();
         },
         
-        handleDragStart(event, studentId) {
-            event.dataTransfer.setData('text/plain', studentId);
-            event.dataTransfer.effectAllowed = 'move';
-        },
-        
-        // --- TOGGLES ---
-        handleToggleSnap() {
-            this.settings.isSnapEnabled = !this.settings.isSnapEnabled;
-            CanvasEngine.setSnap(this.settings.isSnapEnabled);
-            this.saveSettings();
-        },
-        handleToggleDeskLock() {
-            this.settings.isDeskLockEnabled = !this.settings.isDeskLockEnabled;
-            CanvasEngine.setDeskLock(this.settings.isDeskLockEnabled);
-            this.saveSettings();
-        },
-        handleToggleTextFlip() {
-            this.settings.isTextFlipped = !this.settings.isTextFlipped;
-            CanvasEngine.flipSeatText(this.settings.isTextFlipped);
-            this.saveSettings();
-        },
-
         // --- CAMERA ---
         zoomIn() { CanvasEngine.canvas.setZoom(CanvasEngine.canvas.getZoom() * 1.25); },
         zoomOut() { CanvasEngine.canvas.setZoom(Math.max(0.1, CanvasEngine.canvas.getZoom() * 0.8)); },
-        resetView() { CanvasEngine.recalculateDimensions(); },
-
-        // --- EXPORT ---
-        printLayout() {
-            const periodName = this.activePeriod ? this.activePeriod.name : 'Custom_Layout';
-            CanvasEngine.exportToPDF(periodName);
-        }
+        resetView() { CanvasEngine.recalculateDimensions(); }
     }
 };
