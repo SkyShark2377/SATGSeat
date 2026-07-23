@@ -22,7 +22,21 @@ export const LayoutMenu = {
                         Snap: {{ settings.isSnapEnabled ? 'ON' : 'OFF' }}
                     </button>
                 </div>
-
+				
+				<!-- DISPLAY & ORIENTATION -->
+                <div class="mb-4 bg-slate-700/50 p-2 rounded border border-slate-600">
+                    <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-2">Display & Orientation</h3>
+                    <div class="flex gap-2">
+                        <button @click="toggleBoardMode" :class="isBoardMode ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-700 hover:bg-slate-600 border-slate-500 text-slate-200'" class="flex-1 font-bold py-1.5 rounded shadow-sm transition text-xs uppercase tracking-wider border flex justify-center items-center gap-2">
+                            <span v-if="!isBoardMode">🖥️ Board View</span>
+                            <span v-else>🛑 Exit Board</span>
+                        </button>
+                        <button @click="rotateBoard" class="px-3 bg-slate-700 hover:bg-slate-600 border-slate-500 border rounded shadow-sm transition flex items-center justify-center text-slate-200" title="Rotate 90 Degrees">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                    </div>
+                </div>
+				
                 <!-- GLOBAL DESK SIZE -->
                 <div>
                     <h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Global Desk Size (inches)</h3>
@@ -77,13 +91,18 @@ export const LayoutMenu = {
                         <button @click="spawnAsset('rug_circle')" class="w-full text-left px-3 py-1.5 border border-sky-700 rounded bg-sky-900 hover:bg-sky-800 font-semibold transition">🔵 Round Rug</button>
                         <button @click="spawnAsset('rug_half')" class="w-full text-left px-3 py-1.5 border border-sky-700 rounded bg-sky-900 hover:bg-sky-800 font-semibold transition">🌗 Half-Circle Rug</button>
 
-                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Wall Elements</div>
-                        <button @click="spawnAsset('smartboard')" class="w-full text-left px-3 py-1.5 border border-slate-600 rounded bg-slate-800 hover:bg-slate-700 font-semibold transition">📺 Smartboard</button>
-                        <button @click="spawnAsset('door')" class="w-full text-left px-3 py-1.5 border border-red-800 rounded bg-red-950 hover:bg-red-900 font-semibold transition">🚪 Doorway</button>
-                        <button @click="spawnAsset('window')" class="w-full text-left px-3 py-1.5 border border-sky-800 rounded bg-sky-950 hover:bg-sky-900 font-semibold transition">🪟 Window</button>
-                        
-                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Custom Objects</div>
-                        <button @click="spawnAsset('misc')" class="w-full text-left px-3 py-1.5 border border-slate-500 rounded bg-slate-600 hover:bg-slate-500 font-semibold transition">📦 Misc. Object</button>
+                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Custom Shapes</div>
+                        <div class="flex gap-2">
+                            <button @click="spawnAsset('custom_rect')" title="Add Rectangle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-3.5 h-3.5 bg-slate-300 rounded-sm"></div>
+                            </button>
+                            <button @click="spawnAsset('custom_circle')" title="Add Ellipse/Circle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-4 h-4 bg-slate-300 rounded-full"></div>
+                            </button>
+                            <button @click="spawnAsset('custom_triangle')" title="Add Triangle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[14px] border-transparent border-b-slate-300"></div>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -93,6 +112,8 @@ export const LayoutMenu = {
     data() {
         return {
             settings: DataStore.state.settings,
+			isBoardMode: false,
+            boardRotation: 0,
             uiRowCount: 4,
             uiPodLength: 3
         };
@@ -106,6 +127,16 @@ export const LayoutMenu = {
         },
         spawnRow(count) { CanvasEngine.spawnRow(count, this.settings.globalDeskWidth, this.settings.globalDeskLength); },
         spawnPod(length) { CanvasEngine.spawnPod(length, this.settings.globalDeskWidth, this.settings.globalDeskLength); },
-        spawnAsset(type) { CanvasEngine.spawnAsset(type); }
+        spawnAsset(type) { CanvasEngine.spawnAsset(type); },
+		toggleBoardMode() {
+            this.isBoardMode = !this.isBoardMode;
+            CanvasEngine.setBoardMode(this.isBoardMode);
+        },
+        
+        rotateBoard() {
+            // Cycle through 0, 90, 180, and 270 degrees
+            this.boardRotation = (this.boardRotation + 90) % 360;
+            CanvasEngine.setBoardRotation(this.boardRotation);
+        }
     }
 };

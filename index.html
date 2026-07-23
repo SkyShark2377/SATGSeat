@@ -147,14 +147,43 @@
                         <input type="text" v-model="editingAsset.label" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm">
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-3">
+					<div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Elevation Level</label>
+                        <select v-model.number="editingAsset.elevation" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white">
+                            <option value="1">1 - Floor Level (Under Desks)</option>
+                            <option value="2">2 - Standard Desk Level</option>
+                            <option value="3">3 - Tabletop (Above Desks)</option>
+                            <option value="4">4 - Wall Mounted / High</option>
+                            <option value="5">5 - Ceiling (Absolute Top)</option>
+                        </select>
+                    </div>
+					
+                    <div class="grid grid-cols-2 gap-3 mb-3">
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Width (inches)</label>
-                            <input type="number" v-model.number="editingAsset.width" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Width</label>
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 flex flex-col">
+                                    <input type="number" v-model.number="assetWidthFt" min="0" class="w-full px-2 py-1 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white text-center text-xs">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase text-center mt-0.5 tracking-wider">Feet</span>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <input type="number" v-model.number="assetWidthIn" min="0" max="11" class="w-full px-2 py-1 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white text-center text-xs">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase text-center mt-0.5 tracking-wider">Inches</span>
+                                </div>
+                            </div>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Depth (inches)</label>
-                            <input type="number" v-model.number="editingAsset.height" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Depth</label>
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 flex flex-col">
+                                    <input type="number" v-model.number="assetHeightFt" min="0" class="w-full px-2 py-1 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white text-center text-xs">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase text-center mt-0.5 tracking-wider">Feet</span>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <input type="number" v-model.number="assetHeightIn" min="0" max="11" class="w-full px-2 py-1 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white text-center text-xs">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase text-center mt-0.5 tracking-wider">Inches</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 					
@@ -319,7 +348,11 @@
                     currentTab: 'seating',
                     store: DataStore.state,
                     showAssetModal: false,
-                    editingAsset: { id: '', label: '', width: 0, height: 0, fill: '#ffffff', stroke: '#000000', textFill: '#000000', isLocked: false }, // UPDATED
+                    editingAsset: { id: '', label: '', width: 0, height: 0, fill: '#ffffff', stroke: '#000000', textFill: '#000000', elevation: 2, isLocked: false },
+					assetWidthFt: 0,
+                    assetWidthIn: 0,
+                    assetHeightFt: 0,
+                    assetHeightIn: 0,
                     showSeatModal: false,
                     editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' },
 					showBulkAnchorModal: false,
@@ -347,6 +380,10 @@
                 
                 window.addEventListener('open-asset-modal', (e) => {
                     this.editingAsset = { ...e.detail };
+					this.assetWidthFt = Math.floor(this.editingAsset.width / 12);
+                    this.assetWidthIn = Math.round(this.editingAsset.width % 12);
+                    this.assetHeightFt = Math.floor(this.editingAsset.height / 12);
+                    this.assetHeightIn = Math.round(this.editingAsset.height % 12);
                     this.showAssetModal = true;
                 });
 
@@ -433,7 +470,10 @@
                     }
                 },
                 handleSaveAssetEdit() {
-                    // Pass the entire object as a single payload
+                    // Recombine feet and inches into total inches for the engine
+                    this.editingAsset.width = (this.assetWidthFt * 12) + this.assetWidthIn;
+                    this.editingAsset.height = (this.assetHeightFt * 12) + this.assetHeightIn;
+                    
                     CanvasEngine.updateAssetProperties(this.editingAsset);
                     this.showAssetModal = false;
                 },

@@ -14,6 +14,8 @@ export const CanvasEngine = {
     isDragging: false,
     lastPosX: 0,
     lastPosY: 0,
+	boardRotation: 0,
+	isBoardMode: false,
     STORAGE_KEY: 'ClassroomSeatingSuite_CanvasLayout_v2', 
 
     init(canvasId, containerId) {
@@ -40,6 +42,13 @@ export const CanvasEngine = {
 
         fabric.Object.prototype.snapAngle = 5;
         fabric.Object.prototype.snapThreshold = 5;
+        
+        // --- THE NUCLEAR FIX FOR FABRIC.JS ROTATION BUGS ---
+        // 1. Force the engine to render all objects regardless of viewport math (fixes 90 & 270 disappearing)
+        fabric.Object.prototype.isOnScreen = function() { return true; };
+        // 2. Disable offscreen canvas caching (fixes the 180 degree white-box cropping artifact)
+        fabric.Object.prototype.objectCaching = false;
+        // ---------------------------------------------------
         
         this.attachControlListeners();
 
@@ -85,17 +94,48 @@ export const CanvasEngine = {
         const totalH = this.roomInchesH + 40; 
         const maxW = Math.max(this.roomInchesW, (this.headerWidth || 0) + 40);
 
-        const scale = Math.min(rect.width / maxW, rect.height / totalH) * 0.95;
+        const angle = this.boardRotation || 0;
+        const isSwapped = angle === 90 || angle === 270;
         
+        const fitW = isSwapped ? totalH : maxW;
+        const fitH = isSwapped ? maxW : totalH;
+
+        const scale = Math.min(rect.width / fitW, rect.height / fitH) * 0.95;
         this.canvas.setDimensions({ width: rect.width, height: rect.height });
-        this.canvas.setZoom(scale);
 
-        const vpt = this.canvas.viewportTransform;
-        vpt[4] = (rect.width - (this.roomInchesW * scale)) / 2; 
-        vpt[5] = ((rect.height - (totalH * scale)) / 2) + (40 * scale);
+        const contentCx = this.roomInchesW / 2;
+        const contentCy = (this.roomInchesH / 2) - 20; 
+        
+        const screenCx = rect.width / 2;
+        const screenCy = rect.height / 2;
 
-        this.canvas.getObjects().forEach(obj => { if (obj.isFurniture) obj.setCoords(); });
-        this.canvas.renderAll();
+        const rad = fabric.util.degreesToRadians(angle);
+        let cos = Math.cos(rad);
+        let sin = Math.sin(rad);
+
+        // FIX: The "Floating Point Explosion" Bug
+        // Force microscopic decimals to true zero so the inverse matrix doesn't crash
+        if (Math.abs(cos) < 0.0001) cos = 0;
+        if (Math.abs(sin) < 0.0001) sin = 0;
+
+        const vpt = [
+            scale * cos, 
+            scale * sin, 
+            -scale * sin, 
+            scale * cos, 
+            0, 
+            0
+        ];
+
+        const rawX = (contentCx * vpt[0]) + (contentCy * vpt[2]);
+        const rawY = (contentCx * vpt[1]) + (contentCy * vpt[3]);
+
+        vpt[4] = screenCx - rawX;
+        vpt[5] = screenCy - rawY;
+
+        this.canvas.setViewportTransform(vpt);
+        this.canvas.getObjects().forEach(obj => obj.setCoords());
+        this.canvas.requestRenderAll();
     },
 
     getContext() {
@@ -126,18 +166,27 @@ export const CanvasEngine = {
 
         const bgElements = [];
 
+        // 1. LAYER ONE: The Floor (Solid White, NO Border)
         bgElements.push(new fabric.Rect({
             left: 0, top: 0, width: this.roomInchesW, height: this.roomInchesH,
-            fill: '#ffffff', stroke: '#475569', strokeWidth: 3,
+            fill: '#ffffff', strokeWidth: 0,
             selectable: false, evented: false, hoverCursor: 'default', isBackgroundElement: true
         }));
 
+        // 2. LAYER TWO: The Grid Lines (Let them stretch all the way to the 0 coordinates)
         for (let i = 6; i < this.roomInchesW; i += 6) {
-            bgElements.push(new fabric.Line([i, 1.5, i, this.roomInchesH - 1.5], { stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, isBackgroundElement: true }));
+            bgElements.push(new fabric.Line([i, 0, i, this.roomInchesH], { stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, isBackgroundElement: true }));
         }
         for (let j = 6; j < this.roomInchesH; j += 6) {
-            bgElements.push(new fabric.Line([1.5, j, this.roomInchesW - 1.5, j], { stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, isBackgroundElement: true }));
+            bgElements.push(new fabric.Line([0, j, this.roomInchesW, j], { stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, isBackgroundElement: true }));
         }
+
+        // 3. LAYER THREE: The Outer Walls (Transparent fill, Dark Border sitting firmly on top)
+        bgElements.push(new fabric.Rect({
+            left: 0, top: 0, width: this.roomInchesW, height: this.roomInchesH,
+            fill: 'transparent', stroke: '#475569', strokeWidth: 3,
+            selectable: false, evented: false, hoverCursor: 'default', isBackgroundElement: true
+        }));
 
         const ctx = this.getContext();
         let roomName = "CLASSROOM";
@@ -201,15 +250,32 @@ export const CanvasEngine = {
         const objects = [...this.canvas.getObjects()];
         objects.sort((a, b) => {
             const getZ = (obj) => {
-                if (obj.isBackgroundElement) return 0;
+                // 1. Background layer sorting
+                if (obj.isBackgroundElement) {
+                    if (obj.isRoomHeader) return 1; 
+                    if (obj.type === 'rect' && obj.fill === 'transparent') return 5; // Outer Room Border
+                    return 0; // Floor and Grid
+                }
+                
+                // 2. Furniture sorting
+                if (obj.isFurniture && obj.furnitureType === 'front_marker') return 999; 
+                if (obj.isFurniture && obj.furnitureType === 'structural_wall') return 4; // Sit UNDER the Outer Room Border
+                
+                if (obj.blueprint && obj.blueprint.elevation !== undefined) {
+                    return obj.blueprint.elevation;
+                }
                 if (obj.isFurniture && obj.furnitureType && obj.furnitureType.includes('rug')) return 1;
-                if (obj.isFurniture && (obj.furnitureType === 'window' || obj.furnitureType === 'door')) return 3;
-                if (obj.isFurniture && obj.furnitureType === 'front_marker') return 4; // Always on top
+                if (obj.isFurniture && (obj.furnitureType === 'window' || obj.furnitureType === 'door')) return 6;
                 return 2; 
             };
             return getZ(a) - getZ(b);
         });
-        objects.forEach((obj, idx) => { this.canvas.moveTo(obj, idx); });
+        
+        objects.forEach((obj, idx) => { 
+            // Wipe out buggy clip paths so walls don't vanish when rotated!
+            if (obj.clipPath) obj.clipPath = null;
+            this.canvas.moveTo(obj, idx); 
+        });
     },
 
     getGlobalSeatCenter(group, seatObj) {
@@ -908,7 +974,8 @@ export const CanvasEngine = {
     },
 
     spawnAsset(assetType) {
-        let width = 48, height = 48, fill = '#e2e8f0', stroke = '#94a3b8', label = 'Asset', textFill = '#475569', shape = 'rect';
+		if (this.isBoardMode) return;
+        let width = 48, height = 48, fill = '#e2e8f0', stroke = '#94a3b8', label = 'Asset', textFill = '#475569', shape = 'rect', elevation = 2;
         
         switch (assetType) {
             case 'teacher_desk': width = 60; height = 30; fill = '#cbd5e1'; stroke = '#64748b'; label = 'Teacher Desk'; textFill = '#334155'; break;
@@ -916,18 +983,22 @@ export const CanvasEngine = {
             case 'cabinet': width = 36; height = 24; fill = '#e5e7eb'; stroke = '#64748b'; label = 'Cabinet'; textFill = '#334155'; break;
             case 'locker': width = 72; height = 18; fill = '#94a3b8'; stroke = '#475569'; label = 'Lockers'; textFill = '#1e293b'; break;
             case 'bookshelf': width = 48; height = 18; fill = '#fcd34d'; stroke = '#b45309'; label = 'Bookshelf'; textFill = '#78350f'; break;
-            case 'rug': width = 120; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Rect Rug'; textFill = '#0369a1'; break;
-            case 'rug_circle': width = 96; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Round Rug'; textFill = '#0369a1'; shape = 'circle'; break;
-            case 'rug_half': width = 96; height = 48; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Half Rug'; textFill = '#0369a1'; shape = 'half_circle'; break;
+            case 'rug': width = 120; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Rect Rug'; textFill = '#0369a1'; elevation = 1; break;
+            case 'rug_circle': width = 96; height = 96; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Round Rug'; textFill = '#0369a1'; shape = 'circle'; elevation = 1; break;
+            case 'rug_half': width = 96; height = 48; fill = '#bae6fd'; stroke = '#0284c7'; label = 'Half Rug'; textFill = '#0369a1'; shape = 'half_circle'; elevation = 1; break;
             case 'table_round': width = 48; height = 48; fill = '#cbd5e1'; stroke = '#64748b'; label = 'Round Table'; textFill = '#334155'; shape = 'circle'; break;
             case 'table_half': width = 60; height = 30; fill = '#cbd5e1'; stroke = '#64748b'; label = 'Half Table'; textFill = '#334155'; shape = 'half_circle'; break;
-            case 'smartboard': width = 96; height = 8; fill = '#1e293b'; stroke = '#0f172a'; label = 'Smartboard'; textFill = '#ffffff'; break;
-            case 'door': width = 36; height = 8; fill = '#ef4444'; stroke = '#991b1b'; label = 'Door'; textFill = '#ffffff'; break;
-            case 'window': width = 60; height = 8; fill = '#7dd3fc'; stroke = '#0284c7'; label = 'Window'; textFill = '#000000'; break;
-            case 'misc': width = 36; height = 36; fill = '#f3f4f6'; stroke = '#9ca3af'; label = 'Misc'; textFill = '#4b5563'; break;
+            case 'smartboard': width = 96; height = 8; fill = '#1e293b'; stroke = '#0f172a'; label = 'Smartboard'; textFill = '#ffffff'; elevation = 4; break;
+            case 'door': width = 36; height = 8; fill = '#ef4444'; stroke = '#991b1b'; label = 'Door'; textFill = '#ffffff'; elevation = 4; break;
+            case 'window': width = 60; height = 8; fill = '#7dd3fc'; stroke = '#0284c7'; label = 'Window'; textFill = '#000000'; elevation = 4; break;
+            
+            // NEW CUSTOM SHAPES
+            case 'custom_rect': width = 36; height = 36; fill = '#f3f4f6'; stroke = '#9ca3af'; label = 'Box'; textFill = '#4b5563'; shape = 'rect'; break;
+            case 'custom_circle': width = 36; height = 36; fill = '#f3f4f6'; stroke = '#9ca3af'; label = 'Circle'; textFill = '#4b5563'; shape = 'circle'; break;
+            case 'custom_triangle': width = 36; height = 36; fill = '#f3f4f6'; stroke = '#9ca3af'; label = 'Triangle'; textFill = '#4b5563'; shape = 'triangle'; break;
         }
 
-        const group = this.buildAssetObject(assetType, width, height, fill, stroke, label, textFill, shape);
+        const group = this.buildAssetObject(assetType, width, height, fill, stroke, label, textFill, shape, elevation);
         group.furnitureId = 'asset_' + Math.random().toString(36).substr(2, 9).toUpperCase(); 
         
         const center = this.canvas.getVpCenter();
@@ -937,28 +1008,50 @@ export const CanvasEngine = {
         this.enforceZIndex(); 
         this.saveLayout(); 
     },
-
-    buildAssetObject(assetType, width, height, fill, stroke, labelText, textFill, shape = 'rect') {
+    buildAssetObject(assetType, width, height, fill, stroke, labelText, textFill, shape = 'rect', elevation = 2) {
         let baseShape;
-        if (shape === 'circle') baseShape = new fabric.Circle({ left: 0, top: 0, radius: width / 2, fill: fill, stroke: stroke, strokeWidth: 2, strokeUniform: true });
-        else if (shape === 'half_circle') {
+        
+        if (shape === 'circle') {
+            baseShape = new fabric.Ellipse({ 
+                left: 0, top: 0, rx: width / 2, ry: height / 2, fill: fill, stroke: stroke, strokeWidth: 2, strokeUniform: true 
+            });
+        } else if (shape === 'half_circle') {
             const pathStr = `M 0 ${height} A ${width/2} ${height} 0 0 1 ${width} ${height} Z`;
             baseShape = new fabric.Path(pathStr, { left: 0, top: 0, fill: fill, stroke: stroke, strokeWidth: 2, strokeUniform: true });
+        } else if (shape === 'triangle') {
+            baseShape = new fabric.Triangle({ left: 0, top: 0, width: width, height: height, fill: fill, stroke: stroke, strokeWidth: 2, strokeUniform: true });
         } else {
-            baseShape = new fabric.Rect({ left: 0, top: 0, width: width, height: height, fill: fill, stroke: stroke, strokeWidth: 2, rx: (assetType.includes('rug') ? 12 : 2), ry: (assetType.includes('rug') ? 12 : 2), strokeUniform: true });
+            // NEW: Define corner radius based on the specific object type
+            let cornerRadius = 2; // Default soft corners for desks and shelves
+            if (assetType.includes('rug')) cornerRadius = 12; // Extra round for rugs
+            if (assetType === 'structural_wall') cornerRadius = 0; // Perfectly flat ends for walls
+
+            baseShape = new fabric.Rect({ 
+                left: 0, top: 0, 
+                width: width, height: height, 
+                fill: fill, stroke: stroke, strokeWidth: 2, 
+                rx: cornerRadius, ry: cornerRadius, 
+                strokeUniform: true 
+            });
         }
         
         const label = new fabric.Textbox(labelText, { left: width / 2, top: height / 2, width: width - 4, fontSize: (assetType === 'smartboard' || assetType === 'door' || assetType === 'window') ? 6 : 10, fontFamily: 'sans-serif', fill: textFill, originX: 'center', originY: 'center', textAlign: 'center', fontWeight: 'bold' });
         if (shape === 'half_circle') label.set({ top: height * 0.65 });
+        if (shape === 'triangle') label.set({ top: height * 0.70 }); 
         
         const group = new fabric.Group([baseShape, label], { hasRotatingPoint: true, cornerSize: 8 });
         group.isFurniture = true; 
         group.furnitureType = assetType; 
-        group.blueprint = { width, height, fill, stroke, label: labelText, textFill, shape };
+        group.blueprint = { width, height, fill, stroke, label: labelText, textFill, shape, elevation }; 
+		
+		if (assetType === 'structural_wall') {
+            group.set({ originX: 'left', originY: 'center' });
+        }
         return group;
     },
 
     spawnRow(count, dW, dL) {
+		if (this.isBoardMode) return;
         const group = this.buildRowObject(count, dW, dL);
         group.furnitureId = 'furn_' + Math.random().toString(36).substr(2, 9).toUpperCase(); 
         const center = this.canvas.getVpCenter();
@@ -1018,6 +1111,7 @@ export const CanvasEngine = {
     },
 
     spawnPod(length, dW, dL) {
+		if (this.isBoardMode) return;
         const group = this.buildPodObject(length, dW, dL);
         group.furnitureId = 'furn_' + Math.random().toString(36).substr(2, 9).toUpperCase(); 
         const center = this.canvas.getVpCenter();
@@ -1137,6 +1231,29 @@ export const CanvasEngine = {
         this.canvas.on('mouse:down', (options) => {
             const e = options.e;
             
+            // --- NEW: WALL DRAWING START (Live Measurement Tool) ---
+            if (this.isDrawingWall) {
+                const pointer = this.canvas.getPointer(e);
+                this.wallStartX = pointer.x;
+                this.wallStartY = pointer.y;
+                
+                this.activeWallLine = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+                    strokeWidth: 2, fill: '#475569', stroke: '#475569',
+                    selectable: false, evented: false, strokeLineCap: 'square'
+                    // NO CLIP PATH ALLOWED HERE!
+                });
+                
+                // Live Tooltip that follows the line
+                this.activeWallTooltip = new fabric.Text("0' 0\"", {
+                    left: pointer.x, top: pointer.y - 20, fontSize: 16, fontFamily: 'sans-serif',
+                    fontWeight: 'bold', fill: '#0ea5e9', stroke: '#ffffff', strokeWidth: 3, paintFirst: 'stroke',
+                    originX: 'center', originY: 'center', selectable: false, evented: false
+                });
+                
+                this.canvas.add(this.activeWallLine, this.activeWallTooltip);
+                return; // Exit early so we don't trigger panning
+            }
+
             // A. PC Panning (Shift-Click or Middle-Click)
             if (e.shiftKey || e.button === 1) { 
                 this.isDragging = true; this.canvas.selection = false;
@@ -1174,6 +1291,39 @@ export const CanvasEngine = {
         this.canvas.on('mouse:move', (options) => {
             const e = options.e;
             
+            // --- NEW: WALL DRAWING PREVIEW (15-Degree Snapping) ---
+            if (this.isDrawingWall && this.activeWallLine) {
+                const pointer = this.canvas.getPointer(e);
+                
+                let dx = pointer.x - this.wallStartX;
+                let dy = pointer.y - this.wallStartY;
+                let angle = Math.atan2(dy, dx);
+                
+                // 15-degree increments snapping when holding Shift
+                if (e.shiftKey) {
+                    const snapAngle = (15 * Math.PI) / 180;
+                    angle = Math.round(angle / snapAngle) * snapAngle;
+                }
+                
+                const distance = Math.hypot(dx, dy);
+                const x2 = this.wallStartX + distance * Math.cos(angle);
+                const y2 = this.wallStartY + distance * Math.sin(angle);
+                
+                this.activeWallLine.set({ x2: x2, y2: y2 });
+                
+                // Update live measurement text
+                const ft = Math.floor(distance / 12);
+                const inc = Math.round(distance % 12);
+                this.activeWallTooltip.set({
+                    text: `${ft}' ${inc}"`,
+                    left: (this.wallStartX + x2) / 2,
+                    top: ((this.wallStartY + y2) / 2) - 20
+                });
+                
+                this.canvas.renderAll();
+                return; // Exit early
+            }
+
             // A. PC Panning
             if (this.isDragging) {
                 this.canvas.viewportTransform[4] += e.clientX - this.lastPosX;
@@ -1204,7 +1354,7 @@ export const CanvasEngine = {
                 let newZoom = initialZoom * zoomDelta;
                 
                 if (newZoom > 5) newZoom = 5;
-                if (newZoom < 0.1) newZoom = 0.1; // Matched your 0.1 limit
+                if (newZoom < 0.1) newZoom = 0.1;
 
                 this.canvas.zoomToPoint({ x: currentPanX, y: currentPanY }, newZoom);
                 this.canvas.requestRenderAll();
@@ -1218,6 +1368,52 @@ export const CanvasEngine = {
         this.canvas.on('mouse:up', (options) => {
             const e = options.e;
             
+            // --- NEW: WALL DRAWING COMMIT (Scalable Rectangle) ---
+            if (this.isDrawingWall && this.activeWallLine) {
+                const x2 = this.activeWallLine.x2;
+                const y2 = this.activeWallLine.y2;
+                const dx = x2 - this.wallStartX;
+                const dy = y2 - this.wallStartY;
+                const distance = Math.hypot(dx, dy);
+                const angle = Math.atan2(dy, dx);
+                
+                this.canvas.remove(this.activeWallLine, this.activeWallTooltip);
+                
+                if (distance >= 12) { 
+                    const angleDeg = angle * (180 / Math.PI);
+                    
+                    // FIX 1: The "Notch" - Extend the wall length by the thickness
+                    const thickness = 2;
+                    const rectLength = distance + thickness;
+                    
+                    // Shift the start point backwards by half the thickness to perfectly overlap corners
+                    const adjustedStartX = this.wallStartX - (thickness / 2) * Math.cos(angle);
+                    const adjustedStartY = this.wallStartY - (thickness / 2) * Math.sin(angle);
+                    
+                    const group = this.buildAssetObject(
+                        'structural_wall', rectLength, thickness, '#475569', '#475569', '', '#ffffff', 'rect', 4
+                    );
+                    
+                    group.set({
+                        left: adjustedStartX,
+                        top: adjustedStartY,
+                        angle: angleDeg,
+                        furnitureId: 'wall_' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+                        // FIX 2: Freeze the new wall instantly so it cannot be grabbed while drawing the next line
+                        selectable: false,
+                        evented: false
+                    });
+                    
+                    this.canvas.add(group);
+                    this.enforceZIndex();
+                    this.saveLayout();
+                }
+                
+                this.activeWallLine = null; 
+                this.activeWallTooltip = null;
+                return;
+            }
+
             // Turn off PC Panning
             this.isDragging = false; 
             
@@ -1232,8 +1428,9 @@ export const CanvasEngine = {
             this.canvas.getObjects().forEach(obj => obj.setCoords()); 
         });
 
-        // 5. DOUBLE CLICK / DOUBLE TAP (Moved to Fabric Event to support mobile)
+        // 5. DOUBLE CLICK / DOUBLE TAP
         this.canvas.on('mouse:dblclick', (options) => {
+			if (this.isBoardMode) return;
             const activeObj = this.canvas.getActiveObject();
             if (activeObj && activeObj.isFurniture) {
                 if (activeObj.seats) {
@@ -1268,9 +1465,10 @@ export const CanvasEngine = {
                             label: activeObj.blueprint.label,
                             width: activeObj.blueprint.width,
                             height: activeObj.blueprint.height,
-							fill: activeObj.blueprint.fill,
+                            fill: activeObj.blueprint.fill,
                             stroke: activeObj.blueprint.stroke,
                             textFill: activeObj.blueprint.textFill,
+                            elevation: activeObj.blueprint.elevation || 2,
                             isLocked: activeObj.isPositionLocked || false
                         }
                     }));
@@ -1326,6 +1524,7 @@ export const CanvasEngine = {
 
         // 9. DELETE KEY LISTENER
         window.addEventListener('keydown', (e) => {
+			if (this.isBoardMode) return;
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
                 const activeObj = this.canvas.getActiveObject();
@@ -1337,22 +1536,21 @@ export const CanvasEngine = {
             }
         });
     },
-    // test
+
     updateAssetProperties(config) {
         const obj = this.canvas.getObjects().find(o => o.furnitureId === config.id);
         if (obj && !obj.seats && obj.blueprint) {
             
-            // Fallback to existing blueprint colors in case the user edits an older asset
             const fill = config.fill || obj.blueprint.fill;
             const stroke = config.stroke || obj.blueprint.stroke;
             const textFill = config.textFill || obj.blueprint.textFill;
+            const elevation = config.elevation !== undefined ? config.elevation : (obj.blueprint.elevation || 2);
 
             const newGroup = this.buildAssetObject(
                 obj.furnitureType, Math.abs(config.width), Math.abs(config.height), 
-                fill, stroke, config.label, textFill, obj.blueprint.shape 
+                fill, stroke, config.label, textFill, obj.blueprint.shape, elevation
             );
             
-            // Force strict boolean
             const lockState = !!config.isLocked; 
             
             newGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, furnitureId: obj.furnitureId, isPositionLocked: lockState });
@@ -1361,6 +1559,7 @@ export const CanvasEngine = {
             this.canvas.remove(obj); 
             this.canvas.add(newGroup); 
             this.canvas.setActiveObject(newGroup);
+            this.enforceZIndex(); // CRITICAL: Re-sort layers immediately
             this.saveLayout(); 
         }
     },
@@ -1469,6 +1668,7 @@ export const CanvasEngine = {
 
                 if (group) {
                     group.set({ left: f.left, top: f.top, angle: f.angle, scaleX: f.scaleX, scaleY: f.scaleY });
+
                     this.minimapCanvas.add(group);
                 }
             });
@@ -1506,6 +1706,29 @@ export const CanvasEngine = {
         this.isSnapEnabled = enabled;
         fabric.Object.prototype.snapAngle = enabled ? 5 : 0;
         fabric.Object.prototype.snapThreshold = enabled ? 5 : 0;
+    },
+	
+	setWallDrawingMode(isDrawing) {
+		if (isDrawing && (this.boardRotation !== 0 || this.isBoardMode)) return;
+		
+        this.isDrawingWall = isDrawing;
+        
+        // Change the cursor to indicate a different tool is active
+        this.canvas.defaultCursor = isDrawing ? 'crosshair' : 'default';
+        this.canvas.selection = !isDrawing; // Disable the drag-to-select box
+        this.canvas.discardActiveObject();
+        
+        // Freeze or unfreeze all objects on the canvas
+        this.canvas.getObjects().forEach(obj => {
+            if (obj.isFurniture || obj.isBackgroundElement) {
+                obj.set({
+                    selectable: !isDrawing,
+                    evented: !isDrawing
+                });
+            }
+        });
+        
+        this.canvas.renderAll();
     },
 
     setDeskLock(isLocked) {
@@ -1702,8 +1925,14 @@ export const CanvasEngine = {
         doc.save(`Seating_Chart_${safeName}.pdf`);
     },
 	
+	setBoardRotation(angle) {
+        this.boardRotation = angle;
+        this.recalculateDimensions(); // Immediately refresh the camera
+    },
+	
 	setBoardMode(isActive) {
         if (!this.canvas) return;
+		this.isBoardMode = isActive;
 
         // 1. Toggle the background
         if (isActive) {

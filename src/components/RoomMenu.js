@@ -82,13 +82,25 @@ export const RoomMenu = {
                         <button @click="spawnAsset('rug_circle')" class="w-full text-left px-3 py-1.5 border border-sky-700 rounded bg-sky-900 hover:bg-sky-800 font-semibold transition">🔵 Round Rug</button>
                         <button @click="spawnAsset('rug_half')" class="w-full text-left px-3 py-1.5 border border-sky-700 rounded bg-sky-900 hover:bg-sky-800 font-semibold transition">🌗 Half-Circle Rug</button>
 
-                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Wall Elements</div>
-                        <button @click="spawnAsset('smartboard')" class="w-full text-left px-3 py-1.5 border border-slate-600 rounded bg-slate-800 hover:bg-slate-700 font-semibold transition">📺 Smartboard</button>
-                        <button @click="spawnAsset('door')" class="w-full text-left px-3 py-1.5 border border-red-800 rounded bg-red-950 hover:bg-red-900 font-semibold transition">🚪 Doorway</button>
-                        <button @click="spawnAsset('window')" class="w-full text-left px-3 py-1.5 border border-sky-800 rounded bg-sky-950 hover:bg-sky-900 font-semibold transition">🪟 Window</button>
-						<button @click="spawnAsset('misc')" class="w-full text-left px-4 py-2 text-xs hover:bg-gray-100 transition border-b border-gray-100">
-							📦 Misc. Object
-						</button>
+						<!-- STRUCTURAL WALLS -->
+						<div>
+							<h3 class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1.5">Structural</h3>
+							<button @click="toggleWallMode" :class="isDrawingWall ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'" class="w-full text-white font-bold py-1.5 rounded shadow-sm transition text-[10px] uppercase tracking-wider border border-slate-600">
+								{{ isDrawingWall ? '🛑 Stop Drawing' : '🧱 Draw Interior Wall' }}
+							</button>
+						</div>
+                        <div class="text-[9px] text-slate-400 font-bold tracking-wider mt-2 uppercase">Custom Shapes</div>
+                        <div class="flex gap-2">
+                            <button @click="spawnAsset('custom_rect')" title="Add Rectangle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-3.5 h-3.5 bg-slate-300 rounded-sm"></div>
+                            </button>
+                            <button @click="spawnAsset('custom_circle')" title="Add Ellipse/Circle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-4 h-4 bg-slate-300 rounded-full"></div>
+                            </button>
+                            <button @click="spawnAsset('custom_triangle')" title="Add Triangle" class="flex-1 flex items-center justify-center py-2 border border-slate-500 rounded bg-slate-700 hover:bg-slate-600 transition shadow-sm">
+                                <div class="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[14px] border-transparent border-b-slate-300"></div>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -98,6 +110,7 @@ export const RoomMenu = {
     data() {
         return {
             settings: DataStore.state.settings,
+			isDrawingWall: false,
             ui: DataStore.state.ui,
             uiRowCount: 4,
             uiPodLength: 3
@@ -120,6 +133,10 @@ export const RoomMenu = {
                 CanvasEngine.loadLayout(this.ui.activeRoomId); 
                 alert(`Successfully resized ${count} desks/pods.`);
             }
+        },
+		toggleWallMode() {
+            this.isDrawingWall = !this.isDrawingWall;
+            CanvasEngine.setWallDrawingMode(this.isDrawingWall);
         },
 		saveSettings() { DataStore.persist(); },
         handleToggleSnap() { // NEW
