@@ -13,7 +13,8 @@ export const HelpContent = {
               `• DESK ACTIONS: Double-click a seated student to Lock them to the desk (prevents Auto-Assign from moving them) or Evict them back to the roster.  You can also lock an empty desk if you want that desk to remain unused.\n\n` +
               `• ANCHORING (Homeroom Only): If this is your Homeroom period, you can "Anchor" a student to a desk. This reserves that physical desk for them across all other periods in this room. You can also bulk-anchor the entire class or remaining unanchored students.\n\n` +
               `• AUTO-ASSIGN: Automatically seats remaining students based on gender-balancing rules, keeping separated students apart, and pulling preferred seating students toward the Compass Rose.\n\n` +
-              `• EXPORT PDF: Generates a clean, print-ready seating chart, hiding the background grid and layout icons.  Make use of the POV button at the bottom of the menu to switch to teacher view.  This will rotate the names 180 degrees for use from the front of the room when taking attendance.`
+              `• EXPORT PDF: Generates a clean, print-ready seating chart, hiding the background grid and layout icons.  Make use of the POV button at the bottom of the menu to switch to teacher view.  This will rotate the names 180 degrees for use from the front of the room when taking attendance.\n \n` +
+			  `• BOARD MODE: This clears all special formatting (preferred seating, distance restriction, etc.) from the view so you can present on a large board for students to see where they sit.  You can also rotate the room image to 90/180/270 degrees for ease of orienting the map to the room.`
     },
     periods: {
         title: "Help: Period Management",
@@ -24,10 +25,15 @@ export const HelpContent = {
     },
     students: {
         title: "Help: Master Roster Registry",
-        body: `This is your global student database. Students added here can be assigned to any of your class periods.\n\n` +
-              `• ADDING STUDENTS: You can add students manually or use the Import tool to upload a standard CSV roster from your school's grading software.\n\n` +
-              `• PREFERRED SEATING: Check this box if a student needs to sit near the front. The Auto-Assigner will automatically attempt to seat them closest to the Compass Rose.\n\n` +
-			  `• HOMEROOM: Check this box if a student is assigned to your homeroom.  A small house icon will appear wherever their name is used to easily see which students in any given class are from your homeroom. \n\n` +
+        body: `This is your global student database. Students added here can be assigned to any of your class periods.  Manually created students will be added to the roster regardless of name match.  CSV-imported students will overwrite when names match existing students. \n\n` +
+              `• ADDING STUDENTS: You can add students manually or use the Import tool to upload a standard CSV roster. Your CSV must contain a header row (which will be skipped) and follow this exact 5-column order:\n` +
+              `  Format: Last Name, First Name, Gender, Preferred Seating, Homeroom\n` +
+              `  Example: Smith, John, M, Yes, No\n\n` +
+              `• VALID CSV VALUES:\n` +
+              `  - Gender: M, F, Male, Female (Unrecognized values default to Unspecified)\n` +
+              `  - Preferred & Homeroom: True, Yes, Y, 1 (Leave blank or use No/False to disable)\n\n` +
+              `• PREFERRED SEATING: Check this box if a student needs to sit near the front. The Auto-Assigner will automatically attempt to seat them closest to the Front Marker.\n\n` +
+              `• HOMEROOM: Check this box if a student is assigned to your homeroom. A small house icon (🏠) will appear wherever their name is used to easily see which students in any given class are from your homeroom.\n\n` +
               `• SEPARATIONS: If two students absolutely cannot sit next to each other, use the restriction feature. The Auto-Assigner will ensure a minimum physical distance between them in all seating charts.`
     }
 };

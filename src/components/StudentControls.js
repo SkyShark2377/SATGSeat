@@ -9,7 +9,11 @@ export const StudentControls = {
                     {{ editingId ? 'Edit Student' : 'Add Student' }}
                 </h2>
                 <form @submit.prevent="saveStudent" class="flex flex-col gap-2.5">
-                    <input v-model="form.name" placeholder="Full Name" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
+                    
+                    <div class="flex gap-2">
+                        <input v-model="form.firstName" placeholder="First Name" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
+                        <input v-model="form.lastName" placeholder="Last Name" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
+                    </div>
                     
                     <select v-model="form.gender" class="w-full px-2 py-1.5 border border-gray-300 rounded bg-white focus:border-blue-500 outline-none text-xs">
                         <option value="Male">Male</option>
@@ -39,6 +43,7 @@ export const StudentControls = {
                 </form>
             </div>
 
+            <!-- ... (Keep Restrictions block exactly as is) ... -->
             <div class="mt-2">
                 <h2 class="font-bold text-xs text-gray-800 mb-1 uppercase tracking-wider border-b border-gray-200 pb-1">Restrictions</h2>
                 <p class="text-[10px] text-gray-500 mb-2 leading-tight">Keep specific students separated on the layout.</p>
@@ -65,8 +70,8 @@ export const StudentControls = {
     `,
     data() {
         return {
-            students: DataStore.getStudents(),
-            form: { name: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false },
+            students: DataStore.state.students,
+            form: { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false },
             restriction: { student1: '', student2: '' }
         };
     },
@@ -79,9 +84,13 @@ export const StudentControls = {
             immediate: true,
             handler(newVal) {
                 if (newVal) {
-                    this.form = { name: newVal.name, gender: newVal.gender, requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
+                    // Safe split for legacy students that don't have first/last yet
+                    const safeFirst = newVal.firstName || (newVal.name ? newVal.name.split(' ')[0] : '');
+                    const safeLast = newVal.lastName || (newVal.name && newVal.name.includes(' ') ? newVal.name.substring(newVal.name.indexOf(' ') + 1) : '');
+                    
+                    this.form = { firstName: safeFirst, lastName: safeLast, gender: newVal.gender, requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
                 } else {
-                    this.form = { name: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
+                    this.form = { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
                 }
             }
         }
@@ -94,7 +103,7 @@ export const StudentControls = {
         },
         cancelEdit() {
             DataStore.setEditingStudent(null);
-            this.form = { name: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
+            this.form = { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
         },
         addRestriction() {
             DataStore.addRestriction(this.restriction.student1, this.restriction.student2);

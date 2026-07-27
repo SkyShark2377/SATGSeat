@@ -7,6 +7,13 @@ export const StudentRegistry = {
             <div class="bg-gray-50 border-b border-gray-200 p-4 flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-black text-gray-800 uppercase tracking-wide">Student Directory</h2>
                 <div class="flex items-center gap-3">
+                    
+                    <!-- NEW: Sort Dropdown -->
+                    <select v-model="settings.rosterSortMode" @change="saveSettings" class="text-xs font-bold border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white text-gray-700 shadow-sm cursor-pointer">
+                        <option value="alpha">Sort: Last Name (A-Z)</option>
+                        <option value="homeroom">Sort: Homeroom First</option>
+                    </select>
+
                     <button @click="$refs.csvInput.click()" class="text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow transition">📥 Import Roster</button>
                     <input type="file" ref="csvInput" @change="handleRosterUpload" accept=".csv" class="hidden">
                     
@@ -18,6 +25,7 @@ export const StudentRegistry = {
             
             <div class="overflow-y-auto custom-scrollbar flex-1">
                 <table class="w-full text-left border-collapse text-sm">
+                    <!-- ... (Keep table header exactly as is) ... -->
                     <thead class="bg-gray-100 border-b border-gray-300 text-gray-600 text-xs uppercase tracking-wider sticky top-0 z-10">
                         <tr>
                             <th class="p-4 font-bold">Student Name</th>
@@ -31,7 +39,8 @@ export const StudentRegistry = {
                         <tr v-if="Object.keys(students).length === 0">
                             <td colspan="5" class="p-8 text-center text-gray-500 italic">No students registered yet. Use the left panel to add them.</td>
                         </tr>
-                        <tr v-for="(s, id) in students" :key="id" :class="ui.editingStudentId === id ? 'bg-blue-50' : 'hover:bg-gray-50'" class="border-b border-gray-100 transition">
+                        <!-- CHANGED: Loop over sortedStudents instead of students -->
+                        <tr v-for="s in sortedStudents" :key="s.id" :class="ui.editingStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'" class="border-b border-gray-100 transition">
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
                                 {{ s.name }}
                                 <span v-if="s.isHomeroom" title="Homeroom Base" class="text-lg leading-none mt-0.5">🏠</span>
@@ -49,8 +58,8 @@ export const StudentRegistry = {
                                 </div>
                             </td>
                             <td class="p-4 text-right whitespace-nowrap">
-                                <button @click="editStudent(id)" class="text-blue-600 hover:text-blue-800 font-bold text-xs mr-4 transition">Edit</button>
-                                <button @click="deleteStudent(id)" class="text-red-500 hover:text-red-700 font-bold text-xs transition">Delete</button>
+                                <button @click="editStudent(s.id)" class="text-blue-600 hover:text-blue-800 font-bold text-xs mr-4 transition">Edit</button>
+                                <button @click="deleteStudent(s.id)" class="text-red-500 hover:text-red-700 font-bold text-xs transition">Delete</button>
                             </td>
                         </tr>
                     </tbody>
@@ -60,11 +69,21 @@ export const StudentRegistry = {
     `,
     data() {
         return {
-            students: DataStore.getStudents(),
+            students: DataStore.state.students,
+            settings: DataStore.state.settings,
             ui: DataStore.state.ui
         };
     },
+    computed: {
+        // Automatically fetch the sorted list based on the global setting
+        sortedStudents() {
+            return DataStore.getSortedStudents(null, this.settings.rosterSortMode);
+        }
+    },
     methods: {
+        saveSettings() {
+            DataStore.persist();
+        },
         handleRosterUpload(event) {
             const file = event.target.files ? event.target.files[0] : null;
             if (file) {

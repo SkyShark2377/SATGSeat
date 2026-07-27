@@ -93,27 +93,32 @@ export const PeriodAssignment = {
         activeRoomName() {
             if (!this.activePeriod || !this.activePeriod.classroomId) return 'Unassigned';
             const room = this.rooms[this.activePeriod.classroomId];
-            // Scrub any dirty emojis globally
-            return room ? room.name.replace(/🏠/g, '').trim() : 'Unknown Room';
+            return room ? room.name.replace(/🏠/g, '').replace(/匠/g, '').trim() : 'Unknown Room';
         },
         isActiveRoomHomeroom() {
             if (!this.activePeriod || !this.activePeriod.classroomId) return false;
             const room = this.rooms[this.activePeriod.classroomId];
             return room ? !!room.isPrimaryHomeroom : false;
         },
+        
+        // --- NEW: Global Sorting Engine Integration ---
         availableStudents() {
             if (!this.activePeriod) return [];
             const assignedIds = this.activePeriod.studentIds || [];
-            return Object.values(this.students)
-                         .filter(s => !assignedIds.includes(s.id))
-                         .sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Gather all student IDs that are NOT currently assigned
+            const allIds = Object.keys(this.students);
+            const unassignedIds = allIds.filter(id => !assignedIds.includes(id));
+            
+            // Pass to the global sorter using the Roster's global sort preference
+            return DataStore.getSortedStudents(unassignedIds, DataStore.state.settings.rosterSortMode);
         },
         assignedStudents() {
             if (!this.activePeriod) return [];
             const assignedIds = this.activePeriod.studentIds || [];
-            return Object.values(this.students)
-                         .filter(s => assignedIds.includes(s.id))
-                         .sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Pass to the global sorter using the Roster's global sort preference
+            return DataStore.getSortedStudents(assignedIds, DataStore.state.settings.rosterSortMode);
         }
     },
     mounted() {

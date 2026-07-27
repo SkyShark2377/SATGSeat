@@ -2,7 +2,6 @@
 const { reactive } = Vue;
 
 export const DataStore = {
-    // The master state object
     state: reactive({
         students: {},
         periods: {},
@@ -15,7 +14,9 @@ export const DataStore = {
             minSeparationInches: 48,
             isDeskLockEnabled: false,
             isTextFlipped: false,
-            genderDistributionMode: 'random'
+            genderDistributionMode: 'random',
+            rosterSortMode: 'alpha', // Track the global sort preference
+			seatingSortMode: 'alpha' // Track Seating tab sort preference
         },
         ui: { 
             currentTab: 'layout',
@@ -23,7 +24,7 @@ export const DataStore = {
             layoutNonce: 0,       
             editingStudentId: null,
             activePeriodId: 'period_homeroom_base',
-			isBoardMode: false
+            isBoardMode: false
         }
     }),
 
@@ -142,39 +143,48 @@ export const DataStore = {
             const lines = text.split(/\r?\n/);
             let importedCount = 0; let updatedCount = 0;
 
-            // Skip index 0 assuming there is a header row
+            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
                 
                 const cols = line.split(',');
-                const name = cols[0] ? cols[0].trim() : '';
-                if (!name) continue;
+                const lastName = cols[0] ? cols[0].trim() : '';
+                const firstName = cols[1] ? cols[1].trim() : '';
+                if (!lastName && !firstName) continue;
+                
+                // Combine for backward compatibility with the Canvas Engine text labels
+                const name = `${firstName} ${lastName}`.trim();
 
                 let gender = 'Unspecified';
-                if (cols[1]) {
-                    const g = cols[1].trim().toLowerCase();
+                if (cols[2]) {
+                    const g = cols[2].trim().toLowerCase();
                     if (['m', 'male', 'boy', 'b'].includes(g)) gender = 'Male';
                     else if (['f', 'female', 'girl', 'g'].includes(g)) gender = 'Female';
                 }
 
-                const p = cols[2] ? cols[2].trim().toLowerCase() : '';
+                const p = cols[3] ? cols[3].trim().toLowerCase() : '';
                 const requiresPreferredSeating = ['true', 'yes', 'y', '1'].includes(p);
 
-                // NEW: Grab column 4 for Homeroom status
-                const h = cols[3] ? cols[3].trim().toLowerCase() : '';
+                const h = cols[4] ? cols[4].trim().toLowerCase() : '';
                 const isHomeroom = ['true', 'yes', 'y', '1'].includes(h);
 
-                const existingStudent = Object.values(this.state.students).find(s => s.name.toLowerCase() === name.toLowerCase());
+                const existingStudent = Object.values(this.state.students).find(s => 
+                    s.name.toLowerCase() === name.toLowerCase() || 
+                    (s.lastName && s.lastName.toLowerCase() === lastName.toLowerCase() && s.firstName && s.firstName.toLowerCase() === firstName.toLowerCase())
+                );
 
                 if (existingStudent) {
+                    existingStudent.firstName = firstName;
+                    existingStudent.lastName = lastName;
+                    existingStudent.name = name;
                     existingStudent.gender = gender; 
                     existingStudent.requiresPreferredSeating = requiresPreferredSeating; 
-                    existingStudent.isHomeroom = isHomeroom; // Update existing
+                    existingStudent.isHomeroom = isHomeroom; 
                     updatedCount++;
                 } else {
                     const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
-                    this.state.students[id] = { id, name, gender, requiresPreferredSeating, isHomeroom, restrictedStudentIds: [], ownedSeatKey: null };
+                    this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, restrictedStudentIds: [], ownedSeatKey: null };
                     importedCount++;
                 }
             }
@@ -182,6 +192,45 @@ export const DataStore = {
             alert(`Roster Processed!\nAdded ${importedCount} new students.\nUpdated ${updatedCount} existing students.`);
         };
         reader.readAsText(file);
+    },
+
+    // --- NEW: UNIVERSAL SORTING ENGINE ---
+    getSortedStudents(studentIds = null, sortMode = 'alpha') {
+        const studentsObj = this.state.students;
+        const idsToProcess = studentIds || Object.keys(studentsObj);
+        
+        const list = idsToProcess.map(id => studentsObj[id]).filter(Boolean);
+
+        list.sort((a, b) => {
+            // Helper to safely extract names even if the student was created before we added firstName/lastName fields
+            const getLastName = (student) => {
+                if (student.lastName) return student.lastName.toLowerCase();
+                const parts = (student.name || '').trim().split(' ');
+                return (parts[parts.length - 1] || '').toLowerCase();
+            };
+            const getFirstName = (student) => {
+                if (student.firstName) return student.firstName.toLowerCase();
+                return (student.name || '').trim().split(' ')[0].toLowerCase();
+            };
+
+            const lastA = getLastName(a);
+            const lastB = getLastName(b);
+            const firstA = getFirstName(a);
+            const firstB = getFirstName(b);
+            
+            // 1. Evaluate Primary Sort Modifiers
+            if (sortMode === 'homeroom') {
+                if (a.isHomeroom !== b.isHomeroom) return a.isHomeroom ? -1 : 1;
+            } else if (sortMode === 'preferred') {
+                if (a.requiresPreferredSeating !== b.requiresPreferredSeating) return a.requiresPreferredSeating ? -1 : 1;
+            }
+
+            // 2. Always fallback to Last Name -> First Name alphabetical
+            if (lastA !== lastB) return lastA.localeCompare(lastB);
+            return firstA.localeCompare(firstB);
+        });
+
+        return list;
     },
 
     // --- CLASSROOM METHODS ---
@@ -317,7 +366,7 @@ export const DataStore = {
 
     // --- STUDENT METHODS ---
     getStudents() { return this.state.students; },
-	setEditingStudent(id) {
+    setEditingStudent(id) {
         this.state.ui.editingStudentId = id;
     },
     
@@ -325,7 +374,9 @@ export const DataStore = {
         const id = 'std_' + Math.random().toString(36).substr(2, 9);
         this.state.students[id] = {
             id,
-            name: formData.name,
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            name: `${formData.firstName} ${formData.lastName}`.trim(),
             gender: formData.gender,
             isHomeroom: formData.isHomeroom || false,
             requiresPreferredSeating: formData.requiresPreferredSeating || false,
@@ -337,7 +388,9 @@ export const DataStore = {
     
     updateStudent(id, formData) {
         if (this.state.students[id]) {
-            this.state.students[id].name = formData.name;
+            this.state.students[id].firstName = formData.firstName;
+            this.state.students[id].lastName = formData.lastName;
+            this.state.students[id].name = `${formData.firstName} ${formData.lastName}`.trim();
             this.state.students[id].gender = formData.gender;
             this.state.students[id].isHomeroom = formData.isHomeroom;
             this.state.students[id].requiresPreferredSeating = formData.requiresPreferredSeating;
@@ -369,11 +422,21 @@ export const DataStore = {
                 p.studentIds = [];
             });
             
+            // 3. NEW: Hunt down and eradicate all physical seat assignments from the hard drive
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('CS_Period_')) keysToRemove.push(key);
+            }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
+            
             this.persist();
             
-            // 3. Force the canvas to update to clear any seated students
+            // 4. Force the UI and Canvas to reload from the freshly wiped state
             window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
-            window.dispatchEvent(new CustomEvent('force-canvas-redraw'));
+            
+            // If the canvas engine is loaded, force it to wipe the visual screen immediately
+            if (window.CanvasEngine) window.CanvasEngine.loadLayout();
         }
     },
 	

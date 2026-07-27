@@ -505,25 +505,34 @@ export const CanvasEngine = {
             return;
         }
 
-        // --- RADIAL SORTING COMPASS ENGINE ---
-        let fX = this.roomInchesW / 2;
-        let fY = 0;
+        // --- ROW-BY-ROW TYPEWRITER SORTING ENGINE ---
+        let fmInverse;
         const frontMarker = this.canvas.getObjects().find(o => o.furnitureType === 'front_marker');
+        
         if (frontMarker) {
-            fX = frontMarker.left;
-            fY = frontMarker.top;
+            // Grab the true matrix of the marker (including any teacher rotations)
+            const fmMatrix = frontMarker.calcTransformMatrix();
+            fmInverse = fabric.util.invertTransform(fmMatrix);
+        } else {
+            // Fallback: Assume the front of the room is Top-Center
+            fmInverse = fabric.util.invertTransform([1, 0, 0, 1, this.roomInchesW / 2, 0]);
         }
 
         emptySeats.sort((a, b) => {
-            const distA = Math.hypot(a.x - fX, a.y - fY);
-            const distB = Math.hypot(b.x - fX, b.y - fY);
+            // Transform global seat coordinates into the local space of the Front Marker
+            const localA = fabric.util.transformPoint({ x: a.x, y: a.y }, fmInverse);
+            const localB = fabric.util.transformPoint({ x: b.x, y: b.y }, fmInverse);
+
+            // In local space: Y is depth (front to back), X is horizontal (left to right)
             
-            // If desks are practically equidistant (e.g. adjacent side-by-side)
-            if (Math.abs(distA - distB) < 15) {
-                return a.x - b.x; 
+            // Group desks into physical rows using a 30-inch vertical tolerance 
+            // (This ensures offset pods are still treated as part of the same row)
+            if (Math.abs(localA.y - localB.y) < 30) {
+                return localA.x - localB.x; // Sort Left-to-Right within the row
             }
-            return distA - distB;
+            return localA.y - localB.y; // Sort Front-to-Back between rows
         });
+        // ------------------------------------------------------------
 
         for (let seatIndex = 0; seatIndex < emptySeats.length; seatIndex++) {
             if (studentsToPlace.length === 0) break;
@@ -905,8 +914,16 @@ export const CanvasEngine = {
                         let aId = assignments[key] ? assignments[key].assignedStudentId : null;
                         let isLocked = assignments[key] ? assignments[key].isLocked : false;
 
-                        // The old 'owner override' logic was safely removed here because 
-                        // the new protocol pre-cleans the entire assignment dictionary!
+                        // --- NEW: GHOST BUSTING PROTOCOL ---
+                        // If the seat claims to hold a student, but that student no longer 
+                        // exists in the global registry, forcefully unlock and clear the seat!
+                        if (aId && !DataStore.state.students[aId]) {
+                            aId = null;
+                            isLocked = false;
+                            delete assignments[key]; // Clean the dictionary for the next save
+                        }
+                        // -----------------------------------
+						
                         recreatedSeatsData.push({ seatIndex: i, assignedStudentId: aId, isLocked: isLocked });
                     }
 

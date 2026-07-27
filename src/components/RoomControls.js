@@ -38,15 +38,17 @@ export const RoomControls = {
                 </form>
             </div>
 
-            <div class="flex-1 flex flex-col min-h-0">
-                <h2 class="font-bold text-xs text-gray-800 mb-2 uppercase tracking-wider border-b border-gray-200 pb-1">
+            <!-- NEW: Thick, distinct boundary for the active workspace -->
+            <div class="flex-1 flex flex-col min-h-0 border-4 border-slate-900 rounded-2xl p-4 bg-slate-50 shadow-md relative">
+                <h2 class="font-black text-xs text-slate-900 mb-3 uppercase tracking-wider border-b border-slate-300 pb-2 shrink-0">
                     Registered Rooms
                 </h2>
-                <div class="flex flex-col gap-1.5 overflow-y-auto custom-scrollbar pr-1 pb-4">
+                
+                <div class="flex-1 min-h-0 flex flex-col gap-1.5 overflow-y-auto custom-scrollbar pr-1 pb-1">
                     
                     <div v-for="(room, id) in rooms" :key="id" 
-                         class="border rounded transition flex flex-col bg-white overflow-hidden shadow-sm"
-                         :class="ui.activeRoomId === id ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200 hover:bg-gray-50'">
+                         class="border rounded transition flex flex-col bg-white overflow-hidden shadow-sm shrink-0"
+                         :class="ui.activeRoomId === id ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:bg-gray-50'">
                         
                         <div @click="ui.activeRoomId = id" class="px-3 py-2 flex justify-between items-center cursor-pointer" :class="ui.activeRoomId === id ? 'bg-blue-50' : ''">
                             

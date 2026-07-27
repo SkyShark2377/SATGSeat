@@ -74,6 +74,15 @@ export const LayoutControls = {
                     </span>
                 </div>
                 
+				<!-- Seating-Specific Sort Dropdown -->
+                <div class="px-2 py-1.5 bg-white border-b border-gray-200 shrink-0">
+                    <select v-model="settings.seatingSortMode" @change="saveSettings" class="w-full text-[10px] font-bold border border-gray-300 rounded px-1.5 py-1 outline-none focus:border-blue-500 bg-gray-50 text-gray-700 cursor-pointer uppercase tracking-wider shadow-sm">
+                        <option value="alpha">Sort: Last Name (A-Z)</option>
+                        <option value="homeroom">Sort: Homeroom First</option>
+                        <option value="preferred">Sort: Front of Class First</option>
+                    </select>
+                </div>
+				
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-2 flex flex-col gap-1.5">
                     <div v-for="student in rosterStudents" :key="student.id"
                          draggable="true"
@@ -131,14 +140,17 @@ export const LayoutControls = {
     computed: {
         activePeriod() { return this.ui.activePeriodId ? this.periods[this.ui.activePeriodId] : null; },
         seatedStudentIds() { this.ui.layoutNonce; return CanvasEngine.getSeatedStudentIds(); },
+        
         rosterStudents() {
             this.ui.layoutNonce; 
             if (!this.activePeriod) return [];
+            
             const assignedIds = this.activePeriod.studentIds || [];
-            return Object.values(DataStore.state.students)
-                .filter(s => assignedIds.includes(s.id))
-                .sort((a, b) => a.name.localeCompare(b.name));
+            
+            // FIXED: Utilize the universal DataStore sorting engine
+            return DataStore.getSortedStudents(assignedIds, this.settings.seatingSortMode);
         },
+        
         unseatedCount() { return this.rosterStudents.filter(s => !this.seatedStudentIds.includes(s.id)).length; },
         hasAnchors() { return Object.values(DataStore.state.students).some(s => s.ownedSeatKey !== null); }
     },
