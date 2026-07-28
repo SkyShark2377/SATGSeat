@@ -3,12 +3,16 @@ import { DataStore } from '../services/DataStore.js';
 
 export const StudentRegistry = {
     template: `
-        <div class="bg-white border border-gray-300 rounded shadow-sm flex flex-col h-full w-full overflow-hidden">
+        <div class="bg-white border border-gray-300 rounded shadow-sm flex flex-col h-full w-full overflow-hidden relative">
             <div class="bg-gray-50 border-b border-gray-200 p-4 flex justify-between items-center shrink-0">
-                <h2 class="text-lg font-black text-gray-800 uppercase tracking-wide">Student Directory</h2>
+                
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-black text-gray-800 uppercase tracking-wide">Student Directory</h2>
+                    <span class="text-xs font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{{ Object.keys(students).length }} Registered</span>
+                </div>
+
                 <div class="flex items-center gap-3">
                     
-                    <!-- NEW: Sort Dropdown -->
                     <select v-model="settings.rosterSortMode" @change="saveSettings" class="text-xs font-bold border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white text-gray-700 shadow-sm cursor-pointer">
                         <option value="alpha">Sort: Last Name (A-Z)</option>
                         <option value="homeroom">Sort: Homeroom First</option>
@@ -19,13 +23,12 @@ export const StudentRegistry = {
                     
                     <button @click="deleteAll" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded shadow transition">🗑️ Clear Roster</button>
                     
-                    <span class="text-xs font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{{ Object.keys(students).length }} Registered</span>
+                    <button @click="showMockModal = true" class="text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded shadow transition">🧪 Mock Data</button>
                 </div>
             </div>
             
             <div class="overflow-y-auto custom-scrollbar flex-1">
                 <table class="w-full text-left border-collapse text-sm">
-                    <!-- ... (Keep table header exactly as is) ... -->
                     <thead class="bg-gray-100 border-b border-gray-300 text-gray-600 text-xs uppercase tracking-wider sticky top-0 z-10">
                         <tr>
                             <th class="p-4 font-bold">Student Name</th>
@@ -39,7 +42,6 @@ export const StudentRegistry = {
                         <tr v-if="Object.keys(students).length === 0">
                             <td colspan="5" class="p-8 text-center text-gray-500 italic">No students registered yet. Use the left panel to add them.</td>
                         </tr>
-                        <!-- CHANGED: Loop over sortedStudents instead of students -->
                         <tr v-for="s in sortedStudents" :key="s.id" :class="ui.editingStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'" class="border-b border-gray-100 transition">
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
                                 {{ s.name }}
@@ -65,17 +67,55 @@ export const StudentRegistry = {
                     </tbody>
                 </table>
             </div>
+
+            <div v-if="showMockModal" class="absolute inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+                    <div class="bg-purple-900 text-white px-5 py-3 flex justify-between items-center">
+                        <h2 class="text-sm font-bold flex items-center gap-2">🧪 Generate Mock Roster</h2>
+                    </div>
+                    <div class="p-5 flex flex-col gap-4 text-sm bg-slate-50 text-slate-700">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Total Students</label>
+                            <input type="number" v-model.number="mockConfig.total" class="w-full px-2 py-1.5 border border-slate-300 rounded outline-none focus:border-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">% Female (Remainder Male)</label>
+                            <input type="number" v-model.number="mockConfig.percentFemale" min="0" max="100" class="w-full px-2 py-1.5 border border-slate-300 rounded outline-none focus:border-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">% Preferred Seating Chance</label>
+                            <input type="number" v-model.number="mockConfig.percentPreferred" min="0" max="100" class="w-full px-2 py-1.5 border border-slate-300 rounded outline-none focus:border-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Exact # of Homeroom Students</label>
+                            <input type="number" v-model.number="mockConfig.homeroomCount" :max="mockConfig.total" class="w-full px-2 py-1.5 border border-slate-300 rounded outline-none focus:border-purple-500">
+                        </div>
+                    </div>
+                    <div class="bg-white px-5 py-3 flex justify-end gap-2 border-t border-slate-200">
+                        <button @click="showMockModal = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-4 rounded transition text-xs shadow-sm cursor-pointer">Cancel</button>
+                        <button @click="triggerMockGeneration" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-6 rounded transition text-xs shadow-sm cursor-pointer">Generate</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
     `,
     data() {
         return {
             students: DataStore.state.students,
             settings: DataStore.state.settings,
-            ui: DataStore.state.ui
+            ui: DataStore.state.ui,
+            
+            showMockModal: false,
+            mockConfig: {
+                total: 200,
+                percentFemale: 50,
+                percentPreferred: 15,
+                homeroomCount: 30
+            }
         };
     },
     computed: {
-        // Automatically fetch the sorted list based on the global setting
         sortedStudents() {
             return DataStore.getSortedStudents(null, this.settings.rosterSortMode);
         }
@@ -83,6 +123,10 @@ export const StudentRegistry = {
     methods: {
         saveSettings() {
             DataStore.persist();
+        },
+        triggerMockGeneration() {
+            DataStore.generateMockRoster(this.mockConfig);
+            this.showMockModal = false;
         },
         handleRosterUpload(event) {
             const file = event.target.files ? event.target.files[0] : null;

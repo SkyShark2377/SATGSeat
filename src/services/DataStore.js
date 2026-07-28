@@ -193,6 +193,75 @@ export const DataStore = {
         };
         reader.readAsText(file);
     },
+	
+	// --- DEV UTILITY: MOCK DATA GENERATOR ---
+    generateMockRoster(options = {}) {
+        const total = parseInt(options.total) || 200;
+        const percentFemale = parseInt(options.percentFemale) || 50;
+        const percentPreferred = parseInt(options.percentPreferred) || 10;
+        const homeroomCount = parseInt(options.homeroomCount) || 0;
+
+        if (!confirm(`Generate ${total} mock students? This will add them to your existing registry.`)) return;
+
+        const maleFirsts = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Christopher", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven", "Paul", "Andrew", "Joshua"];
+        const femaleFirsts = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Lisa", "Nancy", "Betty", "Margaret", "Sandra", "Ashley", "Kimberly", "Emily", "Donna", "Michelle"];
+        const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Young"];
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+        const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+        let newStudents = [];
+
+        for (let i = 0; i < total; i++) {
+            // 1. Determine Gender based on percentage
+            const isFemale = (Math.random() * 100) < percentFemale;
+            const gender = isFemale ? 'Female' : 'Male';
+            
+            // 2. Generate Name with Middle Initial
+            const baseFirstName = isFemale ? getRandom(femaleFirsts) : getRandom(maleFirsts);
+            const middleInitial = getRandom(alphabet);
+            const lastName = getRandom(lastNames);
+
+            const firstName = baseFirstName + " " + middleInitial + ".";
+            const name = firstName + " " + lastName;
+
+            // 3. Determine Preferred Flag probabilistically
+            const requiresPreferredSeating = (Math.random() * 100) < percentPreferred;
+
+            // 4. Generate ID
+            const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            
+            newStudents.push({
+                id, firstName, lastName, name, gender, requiresPreferredSeating,
+                isHomeroom: false, // Default to false, we will apply exact counts below
+                restrictedStudentIds: [], ownedSeatKey: null
+            });
+        }
+
+        // 5. Apply Exact Hard Number of Homeroom Students
+        const actualHomeroomCount = Math.min(homeroomCount, total);
+        
+        // Fisher-Yates Shuffle to randomize the array safely
+        const indices = Array.from({ length: total }, (_, i) => i);
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        
+        // Assign the exact count
+        for (let i = 0; i < actualHomeroomCount; i++) {
+            newStudents[indices[i]].isHomeroom = true;
+        }
+
+        // 6. Inject into state
+        newStudents.forEach(s => {
+            this.state.students[s.id] = s;
+        });
+
+        this.persist();
+        alert(`Mock Roster Generated!\nSuccessfully added ${total} new students.`);
+        window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
+    },
 
     // --- NEW: UNIVERSAL SORTING ENGINE ---
     getSortedStudents(studentIds = null, sortMode = 'alpha') {
