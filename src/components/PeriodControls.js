@@ -36,7 +36,7 @@ export const PeriodControls = {
                 <div class="flex flex-col gap-1.5 overflow-y-auto custom-scrollbar pr-1 pb-4">
                     
                     <div v-for="(period, id) in periods" :key="id" 
-                         class="border rounded transition flex flex-col bg-white overflow-hidden shadow-sm"
+                         class="border rounded transition flex flex-col bg-white overflow-hidden shadow-sm shrink-0"
                          :class="ui.activePeriodId === id ? 'border-blue-400 ring-1 ring-blue-400' : 'border-gray-200 hover:bg-gray-50'">
                         
                         <div @click="ui.activePeriodId = id" class="px-3 py-2 flex justify-between items-center cursor-pointer" :class="ui.activePeriodId === id ? 'bg-blue-50' : ''">
@@ -63,7 +63,6 @@ export const PeriodControls = {
                             </div>
 
                             <div class="grid grid-cols-2 gap-2 mt-2">
-                                <!-- NEW BUTTON: Only shows for Homeroom Base -->
                                 <button v-if="id === 'period_homeroom_base'" @click="assignHomeroomStudents" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded text-[10px] transition shadow-sm col-span-2 mb-1">
                                     Populate Homeroom Roster
                                 </button>
@@ -116,7 +115,6 @@ export const PeriodControls = {
                 DataStore.clearPeriodRoster(this.ui.activePeriodId);
             }
         },
-        // --- NEW METHOD ---
         assignHomeroomStudents() {
             const allHomeroomStudents = Object.values(DataStore.state.students).filter(s => s.isHomeroom);
             

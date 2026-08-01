@@ -15,8 +15,10 @@ export const DataStore = {
             isDeskLockEnabled: false,
             isTextFlipped: false,
             genderDistributionMode: 'random',
-            rosterSortMode: 'alpha', // Track the global sort preference
-			seatingSortMode: 'alpha' // Track Seating tab sort preference
+            rosterSortMode: 'alpha', 
+			seatingSortMode: 'alpha', 
+            rosterGradeFilter: 'all', // NEW: Track the grade filter for the main roster
+            periodGradeFilter: 'all'  // NEW: Track the grade filter for the periods tab
         },
         ui: { 
             currentTab: 'layout',
@@ -57,6 +59,9 @@ export const DataStore = {
                 classroomId: 'room_homeroom_base'
             };
         }
+        // Patch missing settings from previous saves
+        if (!this.state.settings.rosterGradeFilter) this.state.settings.rosterGradeFilter = 'all';
+        if (!this.state.settings.periodGradeFilter) this.state.settings.periodGradeFilter = 'all';
     },
 
     persist() {
@@ -66,19 +71,13 @@ export const DataStore = {
 	// --- DEV UTILITY ---
     devWipeDatabase() {
         if (confirm("🚨 NUCLEAR WIPE: This will permanently eradicate all local database records, layouts, and ghost data for this application. Continue?")) {
-            
-            // 1. Grab a static array of every key in the browser's storage
             const allKeys = Object.keys(localStorage);
-            
-            // 2. Destroy anything remotely related to the app (case-insensitive)
             allKeys.forEach(key => {
                 const k = key.toLowerCase();
                 if (k.includes('cs_') || k.includes('classroomseating') || k.includes('room_') || k.includes('period_')) {
                     localStorage.removeItem(key);
                 }
             });
-
-            // 3. Reload to start completely fresh
             window.location.reload(); 
         }
     },
@@ -91,18 +90,14 @@ export const DataStore = {
             rooms: {},
             periods: {}
         };
-        
-        // Dynamically scrape all layout and assignment keys
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('CS_Room_')) backup.rooms[key] = JSON.parse(localStorage.getItem(key));
             if (key && key.startsWith('CS_Period_')) backup.periods[key] = JSON.parse(localStorage.getItem(key));
         }
-        
         const dataStr = JSON.stringify(backup, null, 2);
         const blob = new Blob([dataStr], { type: "application/json" });
         const url = URL.createObjectURL(blob);
-        
         const link = document.createElement('a');
         link.href = url;
         link.download = `ClassroomSeating_Backup_${new Date().toISOString().split('T')[0]}.json`;
@@ -119,19 +114,12 @@ export const DataStore = {
                     alert("Invalid backup file. Please ensure it is a V2 backup.");
                     return;
                 }
-                
-                // Restore state
                 localStorage.setItem('ClassroomSeatingSuite_v2', JSON.stringify(importedData.vueState));
-                
-                // Restore room layouts and period assignments
                 if (importedData.rooms) Object.keys(importedData.rooms).forEach(k => localStorage.setItem(k, JSON.stringify(importedData.rooms[k])));
                 if (importedData.periods) Object.keys(importedData.periods).forEach(k => localStorage.setItem(k, JSON.stringify(importedData.periods[k])));
-                
                 alert("Data imported successfully! The application will now reload.");
                 window.location.reload();
-            } catch (err) { 
-                alert("Invalid file format. Please ensure you are importing a valid Classroom Seating JSON backup."); 
-            }
+            } catch (err) { alert("Invalid file format. Please ensure you are importing a valid Classroom Seating JSON backup."); }
         };
         reader.readAsText(file);
     },
@@ -143,7 +131,7 @@ export const DataStore = {
             const lines = text.split(/\r?\n/);
             let importedCount = 0; let updatedCount = 0;
 
-            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom
+            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom, Grade
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
@@ -153,7 +141,6 @@ export const DataStore = {
                 const firstName = cols[1] ? cols[1].trim() : '';
                 if (!lastName && !firstName) continue;
                 
-                // Combine for backward compatibility with the Canvas Engine text labels
                 const name = `${firstName} ${lastName}`.trim();
 
                 let gender = 'Unspecified';
@@ -168,6 +155,9 @@ export const DataStore = {
 
                 const h = cols[4] ? cols[4].trim().toLowerCase() : '';
                 const isHomeroom = ['true', 'yes', 'y', '1'].includes(h);
+                
+                // NEW: Read the grade column (6th column)
+                const grade = cols[5] ? cols[5].trim() : '';
 
                 const existingStudent = Object.values(this.state.students).find(s => 
                     s.name.toLowerCase() === name.toLowerCase() || 
@@ -181,10 +171,11 @@ export const DataStore = {
                     existingStudent.gender = gender; 
                     existingStudent.requiresPreferredSeating = requiresPreferredSeating; 
                     existingStudent.isHomeroom = isHomeroom; 
+                    existingStudent.grade = grade; // Add to existing
                     updatedCount++;
                 } else {
                     const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
-                    this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, restrictedStudentIds: [], ownedSeatKey: null };
+                    this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, grade, restrictedStudentIds: [], ownedSeatKey: null };
                     importedCount++;
                 }
             }
@@ -207,71 +198,59 @@ export const DataStore = {
         const femaleFirsts = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Lisa", "Nancy", "Betty", "Margaret", "Sandra", "Ashley", "Kimberly", "Emily", "Donna", "Michelle"];
         const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Young"];
         const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const grades = ["4", "5", "6"];
 
         const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
         let newStudents = [];
 
         for (let i = 0; i < total; i++) {
-            // 1. Determine Gender based on percentage
             const isFemale = (Math.random() * 100) < percentFemale;
             const gender = isFemale ? 'Female' : 'Male';
-            
-            // 2. Generate Name with Middle Initial
             const baseFirstName = isFemale ? getRandom(femaleFirsts) : getRandom(maleFirsts);
             const middleInitial = getRandom(alphabet);
             const lastName = getRandom(lastNames);
-
             const firstName = baseFirstName + " " + middleInitial + ".";
             const name = firstName + " " + lastName;
-
-            // 3. Determine Preferred Flag probabilistically
             const requiresPreferredSeating = (Math.random() * 100) < percentPreferred;
-
-            // 4. Generate ID
+            const grade = getRandom(grades); // Random grade assigned
             const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
             
             newStudents.push({
-                id, firstName, lastName, name, gender, requiresPreferredSeating,
-                isHomeroom: false, // Default to false, we will apply exact counts below
-                restrictedStudentIds: [], ownedSeatKey: null
+                id, firstName, lastName, name, gender, grade, requiresPreferredSeating,
+                isHomeroom: false, restrictedStudentIds: [], ownedSeatKey: null
             });
         }
 
-        // 5. Apply Exact Hard Number of Homeroom Students
         const actualHomeroomCount = Math.min(homeroomCount, total);
-        
-        // Fisher-Yates Shuffle to randomize the array safely
         const indices = Array.from({ length: total }, (_, i) => i);
         for (let i = indices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [indices[i], indices[j]] = [indices[j], indices[i]];
         }
-        
-        // Assign the exact count
         for (let i = 0; i < actualHomeroomCount; i++) {
             newStudents[indices[i]].isHomeroom = true;
         }
 
-        // 6. Inject into state
-        newStudents.forEach(s => {
-            this.state.students[s.id] = s;
-        });
-
+        newStudents.forEach(s => { this.state.students[s.id] = s; });
         this.persist();
         alert(`Mock Roster Generated!\nSuccessfully added ${total} new students.`);
         window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
     },
 
-    // --- NEW: UNIVERSAL SORTING ENGINE ---
-    getSortedStudents(studentIds = null, sortMode = 'alpha') {
+    // --- NEW: UNIVERSAL SORTING ENGINE (Updated with Filter) ---
+    getSortedStudents(studentIds = null, sortMode = 'alpha', gradeFilter = 'all') {
         const studentsObj = this.state.students;
         const idsToProcess = studentIds || Object.keys(studentsObj);
         
-        const list = idsToProcess.map(id => studentsObj[id]).filter(Boolean);
+        let list = idsToProcess.map(id => studentsObj[id]).filter(Boolean);
+
+        // Apply Grade Filter
+        if (gradeFilter && gradeFilter !== 'all') {
+            list = list.filter(s => s.grade == gradeFilter);
+        }
 
         list.sort((a, b) => {
-            // Helper to safely extract names even if the student was created before we added firstName/lastName fields
             const getLastName = (student) => {
                 if (student.lastName) return student.lastName.toLowerCase();
                 const parts = (student.name || '').trim().split(' ');
@@ -287,14 +266,12 @@ export const DataStore = {
             const firstA = getFirstName(a);
             const firstB = getFirstName(b);
             
-            // 1. Evaluate Primary Sort Modifiers
             if (sortMode === 'homeroom') {
                 if (a.isHomeroom !== b.isHomeroom) return a.isHomeroom ? -1 : 1;
             } else if (sortMode === 'preferred') {
                 if (a.requiresPreferredSeating !== b.requiresPreferredSeating) return a.requiresPreferredSeating ? -1 : 1;
             }
 
-            // 2. Always fallback to Last Name -> First Name alphabetical
             if (lastA !== lastB) return lastA.localeCompare(lastB);
             return firstA.localeCompare(firstB);
         });
@@ -304,46 +281,29 @@ export const DataStore = {
 
     // --- CLASSROOM METHODS ---
     getRooms() { return this.state.classrooms; },
-    
     addRoom(roomData) {
         const id = 'room_' + Math.random().toString(36).substr(2, 9);
-        this.state.classrooms[id] = {
-            id,
-            name: roomData.name,
-			teacherName: roomData.teacherName || '',
-            widthFeet: roomData.widthFeet || 25,
-            lengthFeet: roomData.lengthFeet || 35
-        };
+        this.state.classrooms[id] = { id, name: roomData.name, teacherName: roomData.teacherName || '', widthFeet: roomData.widthFeet || 25, lengthFeet: roomData.lengthFeet || 35 };
         this.state.ui.activeRoomId = id;
         this.persist();
         return id;
     },
-
     duplicateRoom(roomId) {
         const original = this.state.classrooms[roomId];
         if (!original) return null;
-        
         const newId = 'room_' + Math.random().toString(36).substr(2, 9);
-        this.state.classrooms[newId] = {
-            ...original,
-            id: newId,
-            name: original.name + ' (Copy)'
-        };
+        this.state.classrooms[newId] = { ...original, id: newId, name: original.name + ' (Copy)' };
         this.state.ui.activeRoomId = newId;
         this.persist();
         return newId;
     },
-
     deleteRoom(id) {
-        // 1. HARD ERROR VALIDATION: Check if any periods are using this room
         const assignedPeriods = Object.values(this.state.periods).filter(p => p.classroomId === id);
         if (assignedPeriods.length > 0) {
             const names = assignedPeriods.map(p => p.name).join(', ');
             alert(`⛔ CANNOT DELETE ROOM\n\nThis room is currently assigned to the following class periods:\n${names}\n\nYou must reassign or delete these classes before deleting this physical room.`);
             return false;
         }
-
-        // 2. Safe to delete
         delete this.state.classrooms[id];
         if (this.state.ui.activeRoomId === id) {
             const remaining = Object.keys(this.state.classrooms);
@@ -354,107 +314,58 @@ export const DataStore = {
     },
     editRoom(roomId, updatedData) {
         if (this.state.classrooms[roomId]) {
-            // Merge the new data (name, width, length) into the existing room
-            this.state.classrooms[roomId] = { 
-                ...this.state.classrooms[roomId], 
-                ...updatedData 
-            };
+            this.state.classrooms[roomId] = { ...this.state.classrooms[roomId], ...updatedData };
             this.persist();
         }
     },
 
     // --- PERIOD METHODS ---
     getPeriods() { return this.state.periods; },
-    
     addPeriod(formData) {
         const id = 'per_' + Math.random().toString(36).substr(2, 9);
-        this.state.periods[id] = {
-            id,
-            name: formData.name,
-            classroomId: formData.classroomId,
-            studentIds: [],
-            layoutMode: 'custom'
-        };
-        // Auto-select the newly created period
+        this.state.periods[id] = { id, name: formData.name, classroomId: formData.classroomId, studentIds: [], layoutMode: 'custom' };
         this.state.ui.activePeriodId = id;
         this.persist();
     },
-
     deletePeriod(id) {
-        if (id === 'period_homeroom_base') {
-            alert("The primary Homeroom Base period cannot be deleted.");
-            return;
-        }
+        if (id === 'period_homeroom_base') { alert("The primary Homeroom Base period cannot be deleted."); return; }
         delete this.state.periods[id];
-        // If we deleted the active period, fallback to homeroom
-        if (this.state.ui.activePeriodId === id) {
-            this.state.ui.activePeriodId = 'period_homeroom_base';
-        }
+        if (this.state.ui.activePeriodId === id) this.state.ui.activePeriodId = 'period_homeroom_base';
         this.persist();
     },
-
     setPeriodLayoutMode(periodId, mode) {
-        if (this.state.periods[periodId]) {
-            this.state.periods[periodId].layoutMode = mode;
-            this.persist();
-        }
+        if (this.state.periods[periodId]) { this.state.periods[periodId].layoutMode = mode; this.persist(); }
     },
-
     assignStudentToPeriod(periodId, studentId) {
         const p = this.state.periods[periodId];
-        if (p && !p.studentIds.includes(studentId)) {
-            p.studentIds.push(studentId);
-            this.persist();
-        }
+        if (p && !p.studentIds.includes(studentId)) { p.studentIds.push(studentId); this.persist(); }
     },
-
     removeStudentFromPeriod(periodId, studentId) {
         const p = this.state.periods[periodId];
-        if (p) {
-            p.studentIds = p.studentIds.filter(id => id !== studentId);
-            this.persist();
-        }
+        if (p) { p.studentIds = p.studentIds.filter(id => id !== studentId); this.persist(); }
     },
-
     clearPeriodRoster(periodId) {
-        if (this.state.periods[periodId]) {
-            this.state.periods[periodId].studentIds = [];
-            this.persist();
-        }
+        if (this.state.periods[periodId]) { this.state.periods[periodId].studentIds = []; this.persist(); }
     },
-	
 	editPeriod(periodId, updatedData) {
-        if (this.state.periods[periodId]) {
-            this.state.periods[periodId] = { 
-                ...this.state.periods[periodId], 
-                ...updatedData 
-            };
-            this.persist();
-        }
+        if (this.state.periods[periodId]) { this.state.periods[periodId] = { ...this.state.periods[periodId], ...updatedData }; this.persist(); }
     },
 
     // --- STUDENT METHODS ---
     getStudents() { return this.state.students; },
-    setEditingStudent(id) {
-        this.state.ui.editingStudentId = id;
-    },
-    
+    setEditingStudent(id) { this.state.ui.editingStudentId = id; },
     addStudent(formData) {
         const id = 'std_' + Math.random().toString(36).substr(2, 9);
         this.state.students[id] = {
-            id,
-            firstName: formData.firstName,
-            lastName: formData.lastName,
+            id, firstName: formData.firstName, lastName: formData.lastName,
             name: `${formData.firstName} ${formData.lastName}`.trim(),
-            gender: formData.gender,
-            isHomeroom: formData.isHomeroom || false,
+            gender: formData.gender, isHomeroom: formData.isHomeroom || false,
             requiresPreferredSeating: formData.requiresPreferredSeating || false,
-            restrictedStudentIds: [],
-            ownedSeatKey: null
+            grade: formData.grade || '', // NEW FIELD
+            restrictedStudentIds: [], ownedSeatKey: null
         };
         this.persist();
     },
-    
     updateStudent(id, formData) {
         if (this.state.students[id]) {
             this.state.students[id].firstName = formData.firstName;
@@ -463,10 +374,10 @@ export const DataStore = {
             this.state.students[id].gender = formData.gender;
             this.state.students[id].isHomeroom = formData.isHomeroom;
             this.state.students[id].requiresPreferredSeating = formData.requiresPreferredSeating;
+            this.state.students[id].grade = formData.grade || ''; // NEW FIELD
             this.persist();
         }
     },
-    
     deleteStudent(id) {
         const student = this.state.students[id];
         if (student && student.restrictedStudentIds) {
@@ -480,73 +391,44 @@ export const DataStore = {
         delete this.state.students[id];
         this.persist();
     },
-	
 	deleteAllStudents() {
         if (confirm("🚨 WARNING: This will permanently delete ALL students from the directory and clear them from all seating charts. Are you sure?")) {
-            // 1. Wipe the student dictionary
             this.state.students = {};
-            
-            // 2. Clear all period rosters so ghost IDs don't linger
-            Object.values(this.state.periods).forEach(p => {
-                p.studentIds = [];
-            });
-            
-            // 3. NEW: Hunt down and eradicate all physical seat assignments from the hard drive
+            Object.values(this.state.periods).forEach(p => { p.studentIds = []; });
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('CS_Period_')) keysToRemove.push(key);
             }
             keysToRemove.forEach(k => localStorage.removeItem(k));
-            
             this.persist();
-            
-            // 4. Force the UI and Canvas to reload from the freshly wiped state
             window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
-            
-            // If the canvas engine is loaded, force it to wipe the visual screen immediately
             if (window.CanvasEngine) window.CanvasEngine.loadLayout();
         }
     },
-	
 	clearAllHomeroomAnchors() {
-        Object.values(this.state.students).forEach(s => {
-            s.ownedSeatKey = null;
-        });
+        Object.values(this.state.students).forEach(s => { s.ownedSeatKey = null; });
         this.persist();
     },
-    
     addRestriction(student1Id, student2Id) {
         if (!student1Id || !student2Id || student1Id === student2Id) return;
-
         const s1 = this.state.students[student1Id];
         const s2 = this.state.students[student2Id];
-
         if (s1 && s2) {
             const list1 = s1.restrictedStudentIds ? [...s1.restrictedStudentIds] : [];
             const list2 = s2.restrictedStudentIds ? [...s2.restrictedStudentIds] : [];
-
             if (!list1.includes(student2Id)) list1.push(student2Id);
             if (!list2.includes(student1Id)) list2.push(student1Id);
-
             s1.restrictedStudentIds = list1;
             s2.restrictedStudentIds = list2;
-
             this.persist();
         }
     },
-    
     removeRestriction(studentId, restrictedId) {
         const s1 = this.state.students[studentId];
         const s2 = this.state.students[restrictedId];
-
-        if (s1 && s1.restrictedStudentIds) {
-            s1.restrictedStudentIds = s1.restrictedStudentIds.filter(id => id !== restrictedId);
-        }
-        if (s2 && s2.restrictedStudentIds) {
-            s2.restrictedStudentIds = s2.restrictedStudentIds.filter(id => id !== studentId);
-        }
-
+        if (s1 && s1.restrictedStudentIds) s1.restrictedStudentIds = s1.restrictedStudentIds.filter(id => id !== restrictedId);
+        if (s2 && s2.restrictedStudentIds) s2.restrictedStudentIds = s2.restrictedStudentIds.filter(id => id !== studentId);
         this.persist();
     }
 };

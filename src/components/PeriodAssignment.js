@@ -16,9 +16,17 @@ export const PeriodAssignment = {
             <div class="flex-1 flex overflow-hidden">
                 
                 <div class="w-1/3 flex flex-col border-r border-gray-200 bg-gray-50/30">
-                    <div class="p-3 bg-gray-100 border-b border-gray-200 flex justify-between items-center shrink-0">
-                        <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Available Students</span>
-                        <span class="bg-gray-300 text-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{{ availableStudents.length }}</span>
+                    
+                    <div class="p-3 bg-gray-100 border-b border-gray-200 flex flex-col gap-2 shrink-0">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Available Students</span>
+                            <span class="bg-gray-300 text-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{{ availableStudents.length }}</span>
+                        </div>
+                        
+                        <select v-model="settings.periodGradeFilter" @change="saveSettings" class="w-full text-[10px] font-bold border border-gray-300 rounded px-1.5 py-1 outline-none focus:border-blue-500 bg-white text-gray-700 shadow-sm cursor-pointer uppercase tracking-wider">
+                            <option value="all">Filter: All Grades</option>
+                            <option v-for="g in uniqueGrades" :key="g" :value="g">Grade {{ g }}</option>
+                        </select>
                     </div>
                     
                     <div class="flex-1 overflow-y-auto custom-scrollbar p-3 flex flex-col gap-1.5">
@@ -26,14 +34,17 @@ export const PeriodAssignment = {
                              @click="assign(student.id)"
                              class="bg-white border border-gray-200 hover:border-blue-400 hover:shadow-sm rounded px-3 py-2 flex justify-between items-center cursor-pointer group transition">
                             
-                            <span class="font-semibold text-gray-700 flex items-center gap-1.5 text-xs">
-                                {{ student.name }}
-                                <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
-                            </span>
+                            <div class="flex flex-col">
+                                <span class="font-semibold text-gray-700 flex items-center gap-1.5 text-xs">
+                                    {{ student.name }}
+                                    <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
+                                </span>
+                                <span v-if="student.grade" class="text-[9px] text-gray-500 font-bold uppercase mt-0.5">Grade {{ student.grade }}</span>
+                            </div>
                             <span class="hidden group-hover:block text-blue-600 font-bold text-xs">Add &rarr;</span>
                         </div>
                         <div v-if="availableStudents.length === 0" class="text-center text-gray-400 text-xs italic mt-4">
-                            All students assigned.
+                            All students assigned (or none match filter).
                         </div>
                     </div>
                 </div>
@@ -49,10 +60,13 @@ export const PeriodAssignment = {
                              @click="unassign(student.id)"
                              class="bg-blue-50/30 border border-blue-100 hover:border-red-300 hover:bg-red-50 hover:shadow-sm rounded px-3 py-2 flex justify-between items-center cursor-pointer group transition">
                             
-                            <span class="font-semibold text-blue-900 flex items-center gap-1.5 text-xs">
-                                {{ student.name }}
-                                <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
-                            </span>
+                            <div class="flex flex-col">
+                                <span class="font-semibold text-blue-900 flex items-center gap-1.5 text-xs">
+                                    {{ student.name }}
+                                    <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
+                                </span>
+                                <span v-if="student.grade" class="text-[9px] text-blue-700/70 font-bold uppercase mt-0.5">Grade {{ student.grade }}</span>
+                            </div>
                             <span class="hidden group-hover:block text-red-600 font-bold text-xs">&larr; Remove</span>
                         </div>
                         <div v-if="assignedStudents.length === 0" class="text-center text-gray-400 text-xs italic mt-4">
@@ -82,6 +96,7 @@ export const PeriodAssignment = {
             students: DataStore.getStudents(),
             periods: DataStore.getPeriods(),
             rooms: DataStore.getRooms(),
+            settings: DataStore.state.settings,
             ui: DataStore.state.ui,
             resizeObserver: null
         };
@@ -93,7 +108,7 @@ export const PeriodAssignment = {
         activeRoomName() {
             if (!this.activePeriod || !this.activePeriod.classroomId) return 'Unassigned';
             const room = this.rooms[this.activePeriod.classroomId];
-            return room ? room.name.replace(/🏠/g, '').replace(/匠/g, '').trim() : 'Unknown Room';
+            return room ? room.name.replace(/🏠/g, '').trim() : 'Unknown Room';
         },
         isActiveRoomHomeroom() {
             if (!this.activePeriod || !this.activePeriod.classroomId) return false;
@@ -101,24 +116,28 @@ export const PeriodAssignment = {
             return room ? !!room.isPrimaryHomeroom : false;
         },
         
-        // --- NEW: Global Sorting Engine Integration ---
+        // Dynamically populate available grades based on the master registry
+        uniqueGrades() {
+            return [...new Set(Object.values(this.students).map(s => s.grade).filter(Boolean))].sort();
+        },
+        
         availableStudents() {
             if (!this.activePeriod) return [];
             const assignedIds = this.activePeriod.studentIds || [];
             
-            // Gather all student IDs that are NOT currently assigned
             const allIds = Object.keys(this.students);
             const unassignedIds = allIds.filter(id => !assignedIds.includes(id));
             
-            // Pass to the global sorter using the Roster's global sort preference
-            return DataStore.getSortedStudents(unassignedIds, DataStore.state.settings.rosterSortMode);
+            // Apply the global Period Grade Filter here!
+            return DataStore.getSortedStudents(unassignedIds, this.settings.rosterSortMode, this.settings.periodGradeFilter);
         },
         assignedStudents() {
             if (!this.activePeriod) return [];
             const assignedIds = this.activePeriod.studentIds || [];
             
-            // Pass to the global sorter using the Roster's global sort preference
-            return DataStore.getSortedStudents(assignedIds, DataStore.state.settings.rosterSortMode);
+            // Notice we do NOT pass the grade filter to the Assigned side, 
+            // so if a teacher assigns a student, they don't visually vanish if the filter changes!
+            return DataStore.getSortedStudents(assignedIds, this.settings.rosterSortMode, 'all');
         }
     },
     mounted() {
@@ -145,6 +164,7 @@ export const PeriodAssignment = {
         'assignedStudents'() { this.updateMinimap(); } 
     },
     methods: {
+        saveSettings() { DataStore.persist(); },
         assign(studentId) {
             if (this.ui.activePeriodId) DataStore.assignStudentToPeriod(this.ui.activePeriodId, studentId);
         },

@@ -13,6 +13,11 @@ export const StudentRegistry = {
 
                 <div class="flex items-center gap-3">
                     
+                    <select v-model="settings.rosterGradeFilter" @change="saveSettings" class="text-xs font-bold border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white text-gray-700 shadow-sm cursor-pointer">
+                        <option value="all">Filter: All Grades</option>
+                        <option v-for="g in uniqueGrades" :key="g" :value="g">Grade {{ g }}</option>
+                    </select>
+
                     <select v-model="settings.rosterSortMode" @change="saveSettings" class="text-xs font-bold border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white text-gray-700 shadow-sm cursor-pointer">
                         <option value="alpha">Sort: Last Name (A-Z)</option>
                         <option value="homeroom">Sort: Homeroom First</option>
@@ -33,6 +38,7 @@ export const StudentRegistry = {
                         <tr>
                             <th class="p-4 font-bold">Student Name</th>
                             <th class="p-4 font-bold">Gender</th>
+                            <th class="p-4 font-bold">Grade</th>
                             <th class="p-4 font-bold text-center">Preferred Seating</th>
                             <th class="p-4 font-bold">Enforced Restrictions</th>
                             <th class="p-4 font-bold text-right">Actions</th>
@@ -40,7 +46,7 @@ export const StudentRegistry = {
                     </thead>
                     <tbody>
                         <tr v-if="Object.keys(students).length === 0">
-                            <td colspan="5" class="p-8 text-center text-gray-500 italic">No students registered yet. Use the left panel to add them.</td>
+                            <td colspan="6" class="p-8 text-center text-gray-500 italic">No students registered yet. Use the left panel to add them.</td>
                         </tr>
                         <tr v-for="s in sortedStudents" :key="s.id" :class="ui.editingStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'" class="border-b border-gray-100 transition">
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
@@ -48,6 +54,7 @@ export const StudentRegistry = {
                                 <span v-if="s.isHomeroom" title="Homeroom Base" class="text-lg leading-none mt-0.5">🏠</span>
                             </td>
                             <td class="p-4 text-gray-600">{{ s.gender }}</td>
+                            <td class="p-4 text-gray-600 font-semibold">{{ s.grade || '-' }}</td>
                             <td class="p-4 text-center">
                                 <span v-if="s.requiresPreferredSeating" class="bg-yellow-100 border border-yellow-300 text-yellow-800 text-[10px] font-black px-2 py-1 rounded shadow-sm tracking-wider uppercase">FRONT</span>
                             </td>
@@ -105,7 +112,6 @@ export const StudentRegistry = {
             students: DataStore.state.students,
             settings: DataStore.state.settings,
             ui: DataStore.state.ui,
-            
             showMockModal: false,
             mockConfig: {
                 total: 200,
@@ -116,8 +122,13 @@ export const StudentRegistry = {
         };
     },
     computed: {
+        // Automatically fetch the unique grades to populate the dropdown
+        uniqueGrades() {
+            return [...new Set(Object.values(this.students).map(s => s.grade).filter(Boolean))].sort();
+        },
         sortedStudents() {
-            return DataStore.getSortedStudents(null, this.settings.rosterSortMode);
+            // Apply both the sort preference and the grade filter
+            return DataStore.getSortedStudents(null, this.settings.rosterSortMode, this.settings.rosterGradeFilter);
         }
     },
     methods: {

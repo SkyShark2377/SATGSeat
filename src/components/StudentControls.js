@@ -15,11 +15,14 @@ export const StudentControls = {
                         <input v-model="form.lastName" placeholder="Last Name" required class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
                     </div>
                     
-                    <select v-model="form.gender" class="w-full px-2 py-1.5 border border-gray-300 rounded bg-white focus:border-blue-500 outline-none text-xs">
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Unspecified">Unspecified</option>
-                    </select>
+                    <div class="flex gap-2">
+                        <select v-model="form.gender" class="w-full px-2 py-1.5 border border-gray-300 rounded bg-white focus:border-blue-500 outline-none text-xs">
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Unspecified">Unspecified</option>
+                        </select>
+                        <input v-model="form.grade" placeholder="Grade (e.g. 4)" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
+                    </div>
 
                     <div class="flex flex-col gap-1.5 bg-gray-50 p-2 rounded border border-gray-100 mt-0.5">
                         <label class="flex items-center gap-2 cursor-pointer text-gray-700 text-[11px] font-bold">
@@ -43,7 +46,6 @@ export const StudentControls = {
                 </form>
             </div>
 
-            <!-- ... (Keep Restrictions block exactly as is) ... -->
             <div class="mt-2">
                 <h2 class="font-bold text-xs text-gray-800 mb-1 uppercase tracking-wider border-b border-gray-200 pb-1">Restrictions</h2>
                 <p class="text-[10px] text-gray-500 mb-2 leading-tight">Keep specific students separated on the layout.</p>
@@ -71,7 +73,7 @@ export const StudentControls = {
     data() {
         return {
             students: DataStore.state.students,
-            form: { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false },
+            form: { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false },
             restriction: { student1: '', student2: '' }
         };
     },
@@ -84,13 +86,12 @@ export const StudentControls = {
             immediate: true,
             handler(newVal) {
                 if (newVal) {
-                    // Safe split for legacy students that don't have first/last yet
                     const safeFirst = newVal.firstName || (newVal.name ? newVal.name.split(' ')[0] : '');
                     const safeLast = newVal.lastName || (newVal.name && newVal.name.includes(' ') ? newVal.name.substring(newVal.name.indexOf(' ') + 1) : '');
                     
-                    this.form = { firstName: safeFirst, lastName: safeLast, gender: newVal.gender, requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
+                    this.form = { firstName: safeFirst, lastName: safeLast, gender: newVal.gender, grade: newVal.grade || '', requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
                 } else {
-                    this.form = { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
+                    this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false };
                 }
             }
         }
@@ -103,7 +104,7 @@ export const StudentControls = {
         },
         cancelEdit() {
             DataStore.setEditingStudent(null);
-            this.form = { firstName: '', lastName: '', gender: 'Unspecified', requiresPreferredSeating: false, isHomeroom: false };
+            this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false };
         },
         addRestriction() {
             DataStore.addRestriction(this.restriction.student1, this.restriction.student2);
