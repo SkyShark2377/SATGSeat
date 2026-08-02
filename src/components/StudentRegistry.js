@@ -51,7 +51,12 @@ export const StudentRegistry = {
                         <tr v-if="Object.keys(students).length === 0">
                             <td colspan="6" class="p-8 text-center text-gray-500 italic">No students registered yet. Use the left panel to add them.</td>
                         </tr>
-                        <tr v-for="s in sortedStudents" :key="s.id" :class="ui.editingStudentId === s.id ? 'bg-blue-50' : 'hover:bg-gray-50'" class="border-b border-gray-100 transition">
+                        
+                        <tr v-for="s in sortedStudents" :key="s.id" 
+                            @click="editStudent(s.id)"
+                            :class="ui.editingStudentId === s.id ? 'bg-blue-100 shadow-inner' : 'hover:bg-gray-50'" 
+                            class="border-b border-gray-100 transition cursor-pointer group">
+                            
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
                                 {{ s.name }}
                                 <span v-if="s.isHomeroom" title="Homeroom Base" class="text-lg leading-none mt-0.5">🏠</span>
@@ -66,13 +71,14 @@ export const StudentRegistry = {
                                 <div class="flex flex-wrap gap-1.5">
                                     <span v-for="rId in s.restrictedStudentIds" :key="rId" class="bg-red-50 border border-red-200 text-red-700 text-xs px-2 py-1 rounded flex items-center gap-1 shadow-sm">
                                         ⚠️ {{ students[rId]?.name }}
-                                        <button @click="removeRestriction(s.id, rId)" class="hover:text-red-900 ml-1 font-bold bg-red-200 rounded-full w-4 h-4 flex items-center justify-center leading-none">&times;</button>
+                                        <button @click.stop="removeRestriction(s.id, rId)" class="hover:text-red-900 ml-1 font-bold bg-red-200 rounded-full w-4 h-4 flex items-center justify-center leading-none">&times;</button>
                                     </span>
                                 </div>
                             </td>
                             <td class="p-4 text-right whitespace-nowrap">
-                                <button @click="editStudent(s.id)" class="text-blue-600 hover:text-blue-800 font-bold text-xs mr-4 transition">Edit</button>
-                                <button @click="deleteStudent(s.id)" class="text-red-500 hover:text-red-700 font-bold text-xs transition">Delete</button>
+                                <button @click.stop="deleteStudent(s.id)" title="Delete Student" class="text-red-400 hover:text-red-600 transition text-base leading-none grayscale opacity-60 hover:grayscale-0 hover:opacity-100">
+                                    🗑️
+                                </button>
                             </td>
                         </tr>
                     </tbody>
@@ -149,7 +155,11 @@ export const StudentRegistry = {
             }
         },
         editStudent(id) {
-            DataStore.setEditingStudent(id);
+            if (this.ui.editingStudentId === id) {
+                DataStore.setEditingStudent(null);
+            } else {
+                DataStore.setEditingStudent(id);
+            }
         },
         deleteStudent(id) {
             if(confirm('Remove student completely?')) {
