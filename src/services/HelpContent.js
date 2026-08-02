@@ -25,15 +25,17 @@ export const HelpContent = {
     },
     students: {
         title: "Help: Master Roster Registry",
-        body: `This is your global student database. Students added here can be assigned to any of your class periods.  Manually created students will be added to the roster regardless of name match.  CSV-imported students will overwrite when names match existing students. \n\n` +
-              `• ADDING STUDENTS: You can add students manually or use the Import tool to upload a standard CSV roster. Your CSV must contain a header row (which will be skipped) and follow this exact 5-column order:\n` +
-              `  Format: Last Name, First Name, Gender, Preferred Seating, Homeroom\n` +
-              `  Example: Smith, John, M, Yes, No\n\n` +
+        body: `This is your global student database. Students added here can be assigned to any of your class periods.\n\n` +
+              `• ADDING STUDENTS: You can add students manually or use the Import tool to upload a standard CSV roster. Your CSV must contain a header row (which will be skipped) and follow this exact 6-column order:\n` +
+              `  Format: Last Name, First Name, Gender, Preferred Seating, Homeroom, Grade\n` +
+              `  Example: Smith, John, M, Yes, No, 4\n\n` +
+              `• GOOGLE SHEETS IMPORT: To get your CSV from Google Sheets, click File > Download > Comma separated values (.csv).\n\n` +
               `• VALID CSV VALUES:\n` +
               `  - Gender: M, F, Male, Female (Unrecognized values default to Unspecified)\n` +
-              `  - Preferred & Homeroom: True, Yes, Y, 1 (Leave blank or use No/False to disable)\n\n` +
+              `  - Preferred & Homeroom: True, Yes, Y, 1 (Leave blank or use No/False to disable)\n` +
+              `  - Grade: 4, 5, 6, etc. (Optional)\n\n` +
               `• PREFERRED SEATING: Check this box if a student needs to sit near the front. The Auto-Assigner will automatically attempt to seat them closest to the Front Marker.\n\n` +
-              `• HOMEROOM: Check this box if a student is assigned to your homeroom. A small house icon (🏠) will appear wherever their name is used to easily see which students in any given class are from your homeroom.\n\n` +
+              `• HOMEROOM: Check this box if a student is assigned to your homeroom. A small house icon (🏠) will appear wherever their name is used.\n\n` +
               `• SEPARATIONS: If two students absolutely cannot sit next to each other, use the restriction feature. The Auto-Assigner will ensure a minimum physical distance between them in all seating charts.`
     }
 };

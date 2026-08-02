@@ -17,8 +17,8 @@ export const DataStore = {
             genderDistributionMode: 'random',
             rosterSortMode: 'alpha', 
 			seatingSortMode: 'alpha', 
-            rosterGradeFilter: 'all', // NEW: Track the grade filter for the main roster
-            periodGradeFilter: 'all'  // NEW: Track the grade filter for the periods tab
+            rosterGradeFilter: 'all', 
+            periodGradeFilter: 'all'  
         },
         ui: { 
             currentTab: 'layout',
@@ -41,25 +41,11 @@ export const DataStore = {
 
     ensureDefaults() {
         if (Object.keys(this.state.classrooms).length === 0) {
-            this.state.classrooms['room_homeroom_base'] = {
-                id: 'room_homeroom_base',
-                name: 'Primary Homeroom',
-                teacher: 'Teacher Homeroom',
-                isPrimaryHomeroom: true,
-                widthFeet: 30,
-                lengthFeet: 25
-            };
+            this.state.classrooms['room_homeroom_base'] = { id: 'room_homeroom_base', name: 'Primary Homeroom', teacher: 'Teacher Homeroom', isPrimaryHomeroom: true, widthFeet: 30, lengthFeet: 25 };
         }
         if (!this.state.periods['period_homeroom_base']) {
-            this.state.periods['period_homeroom_base'] = {
-                id: 'period_homeroom_base',
-                name: 'Homeroom Base',
-                studentIds: [],
-                layoutMode: 'custom',
-                classroomId: 'room_homeroom_base'
-            };
+            this.state.periods['period_homeroom_base'] = { id: 'period_homeroom_base', name: 'Homeroom Base', studentIds: [], layoutMode: 'custom', classroomId: 'room_homeroom_base' };
         }
-        // Patch missing settings from previous saves
         if (!this.state.settings.rosterGradeFilter) this.state.settings.rosterGradeFilter = 'all';
         if (!this.state.settings.periodGradeFilter) this.state.settings.periodGradeFilter = 'all';
     },
@@ -68,7 +54,6 @@ export const DataStore = {
         localStorage.setItem('ClassroomSeatingSuite_v2', JSON.stringify(this.state));
     },
 
-	// --- DEV UTILITY ---
     devWipeDatabase() {
         if (confirm("🚨 NUCLEAR WIPE: This will permanently eradicate all local database records, layouts, and ghost data for this application. Continue?")) {
             const allKeys = Object.keys(localStorage);
@@ -82,7 +67,6 @@ export const DataStore = {
         }
     },
 
-	// --- FILE I/O UTILITIES ---
     exportData() {
         const backup = {
             version: "2.0",
@@ -131,12 +115,15 @@ export const DataStore = {
             const lines = text.split(/\r?\n/);
             let importedCount = 0; let updatedCount = 0;
 
-            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom, Grade
+            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom, Grade, Notes
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
                 
-                const cols = line.split(',');
+                // THE FIX: Regex to split by commas EXCEPT when they are inside double quotes.
+                // It also cleans up the surrounding quotes and escapes after splitting.
+                const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+                
                 const lastName = cols[0] ? cols[0].trim() : '';
                 const firstName = cols[1] ? cols[1].trim() : '';
                 if (!lastName && !firstName) continue;
@@ -150,14 +137,12 @@ export const DataStore = {
                     else if (['f', 'female', 'girl', 'g'].includes(g)) gender = 'Female';
                 }
 
-                const p = cols[3] ? cols[3].trim().toLowerCase() : '';
-                const requiresPreferredSeating = ['true', 'yes', 'y', '1'].includes(p);
-
-                const h = cols[4] ? cols[4].trim().toLowerCase() : '';
-                const isHomeroom = ['true', 'yes', 'y', '1'].includes(h);
-                
-                // NEW: Read the grade column (6th column)
+                const requiresPreferredSeating = cols[3] && ['true', 'yes', 'y', '1'].includes(cols[3].trim().toLowerCase());
+                const isHomeroom = cols[4] && ['true', 'yes', 'y', '1'].includes(cols[4].trim().toLowerCase());
                 const grade = cols[5] ? cols[5].trim() : '';
+                
+                // NEW: Capture the 7th column for Notes
+                const notes = cols[6] ? cols[6].trim() : '';
 
                 const existingStudent = Object.values(this.state.students).find(s => 
                     s.name.toLowerCase() === name.toLowerCase() || 
@@ -171,11 +156,12 @@ export const DataStore = {
                     existingStudent.gender = gender; 
                     existingStudent.requiresPreferredSeating = requiresPreferredSeating; 
                     existingStudent.isHomeroom = isHomeroom; 
-                    existingStudent.grade = grade; // Add to existing
+                    existingStudent.grade = grade; 
+                    existingStudent.notes = notes; // Update Notes
                     updatedCount++;
                 } else {
                     const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
-                    this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, grade, restrictedStudentIds: [], ownedSeatKey: null };
+                    this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, grade, notes, restrictedStudentIds: [], ownedSeatKey: null };
                     importedCount++;
                 }
             }
@@ -185,7 +171,6 @@ export const DataStore = {
         reader.readAsText(file);
     },
 	
-	// --- DEV UTILITY: MOCK DATA GENERATOR ---
     generateMockRoster(options = {}) {
         const total = parseInt(options.total) || 200;
         const percentFemale = parseInt(options.percentFemale) || 50;
@@ -199,6 +184,9 @@ export const DataStore = {
         const lastNames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Young"];
         const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const grades = ["4", "5", "6"];
+        
+        // Let's add some mock notes just to test the display!
+        const mockNotes = ["Gets distracted easily.", "IEP on file - requires preferential seating.", "Vision issues, sits near front.", "Talks a lot with friends.", ""];
 
         const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
@@ -213,11 +201,12 @@ export const DataStore = {
             const firstName = baseFirstName + " " + middleInitial + ".";
             const name = firstName + " " + lastName;
             const requiresPreferredSeating = (Math.random() * 100) < percentPreferred;
-            const grade = getRandom(grades); // Random grade assigned
+            const grade = getRandom(grades); 
+            const notes = Math.random() > 0.8 ? getRandom(mockNotes) : ""; // 20% chance of having a note
             const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
             
             newStudents.push({
-                id, firstName, lastName, name, gender, grade, requiresPreferredSeating,
+                id, firstName, lastName, name, gender, grade, notes, requiresPreferredSeating,
                 isHomeroom: false, restrictedStudentIds: [], ownedSeatKey: null
             });
         }
@@ -238,14 +227,12 @@ export const DataStore = {
         window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
     },
 
-    // --- NEW: UNIVERSAL SORTING ENGINE (Updated with Filter) ---
     getSortedStudents(studentIds = null, sortMode = 'alpha', gradeFilter = 'all') {
         const studentsObj = this.state.students;
         const idsToProcess = studentIds || Object.keys(studentsObj);
         
         let list = idsToProcess.map(id => studentsObj[id]).filter(Boolean);
 
-        // Apply Grade Filter
         if (gradeFilter && gradeFilter !== 'all') {
             list = list.filter(s => s.grade == gradeFilter);
         }
@@ -361,7 +348,7 @@ export const DataStore = {
             name: `${formData.firstName} ${formData.lastName}`.trim(),
             gender: formData.gender, isHomeroom: formData.isHomeroom || false,
             requiresPreferredSeating: formData.requiresPreferredSeating || false,
-            grade: formData.grade || '', // NEW FIELD
+            grade: formData.grade || '', notes: formData.notes || '', // NEW FIELD
             restrictedStudentIds: [], ownedSeatKey: null
         };
         this.persist();
@@ -374,7 +361,8 @@ export const DataStore = {
             this.state.students[id].gender = formData.gender;
             this.state.students[id].isHomeroom = formData.isHomeroom;
             this.state.students[id].requiresPreferredSeating = formData.requiresPreferredSeating;
-            this.state.students[id].grade = formData.grade || ''; // NEW FIELD
+            this.state.students[id].grade = formData.grade || ''; 
+            this.state.students[id].notes = formData.notes || ''; // NEW FIELD
             this.persist();
         }
     },

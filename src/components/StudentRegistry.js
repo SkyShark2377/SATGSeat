@@ -23,8 +23,11 @@ export const StudentRegistry = {
                         <option value="homeroom">Sort: Homeroom First</option>
                     </select>
 
-                    <button @click="$refs.csvInput.click()" class="text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow transition">📥 Import Roster</button>
-                    <input type="file" ref="csvInput" @change="handleRosterUpload" accept=".csv" class="hidden">
+                    <div class="relative">
+                        <button @click="$refs.csvInput.click()" class="text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow transition w-full">📥 Import Roster</button>
+                        <div class="absolute top-[calc(100%+4px)] right-0 text-[9px] text-gray-500 whitespace-nowrap leading-none tracking-tight">Google Sheets: File > Download > CSV</div>
+                        <input type="file" ref="csvInput" @change="handleRosterUpload" accept=".csv" class="hidden">
+                    </div>
                     
                     <button @click="deleteAll" class="text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded shadow transition">🗑️ Clear Roster</button>
                     
@@ -52,6 +55,7 @@ export const StudentRegistry = {
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
                                 {{ s.name }}
                                 <span v-if="s.isHomeroom" title="Homeroom Base" class="text-lg leading-none mt-0.5">🏠</span>
+                                <span v-if="s.notes" :title="s.notes" class="text-sm cursor-help opacity-70 hover:opacity-100 transition">📝</span>
                             </td>
                             <td class="p-4 text-gray-600">{{ s.gender }}</td>
                             <td class="p-4 text-gray-600 font-semibold">{{ s.grade || '-' }}</td>
@@ -122,12 +126,10 @@ export const StudentRegistry = {
         };
     },
     computed: {
-        // Automatically fetch the unique grades to populate the dropdown
         uniqueGrades() {
             return [...new Set(Object.values(this.students).map(s => s.grade).filter(Boolean))].sort();
         },
         sortedStudents() {
-            // Apply both the sort preference and the grade filter
             return DataStore.getSortedStudents(null, this.settings.rosterSortMode, this.settings.rosterGradeFilter);
         }
     },

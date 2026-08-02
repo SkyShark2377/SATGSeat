@@ -24,6 +24,10 @@ export const StudentControls = {
                         <input v-model="form.grade" placeholder="Grade (e.g. 4)" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs">
                     </div>
 
+                    <div>
+                        <textarea v-model="form.notes" placeholder="Student Notes (IEP, Behavioral, Contact Info...)" rows="2" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-blue-500 outline-none text-xs resize-none"></textarea>
+                    </div>
+
                     <div class="flex flex-col gap-1.5 bg-gray-50 p-2 rounded border border-gray-100 mt-0.5">
                         <label class="flex items-center gap-2 cursor-pointer text-gray-700 text-[11px] font-bold">
                             <input type="checkbox" v-model="form.requiresPreferredSeating" class="w-3.5 h-3.5 text-blue-600 rounded"> 
@@ -73,7 +77,7 @@ export const StudentControls = {
     data() {
         return {
             students: DataStore.state.students,
-            form: { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false },
+            form: { firstName: '', lastName: '', gender: 'Unspecified', grade: '', notes: '', requiresPreferredSeating: false, isHomeroom: false },
             restriction: { student1: '', student2: '' }
         };
     },
@@ -89,9 +93,9 @@ export const StudentControls = {
                     const safeFirst = newVal.firstName || (newVal.name ? newVal.name.split(' ')[0] : '');
                     const safeLast = newVal.lastName || (newVal.name && newVal.name.includes(' ') ? newVal.name.substring(newVal.name.indexOf(' ') + 1) : '');
                     
-                    this.form = { firstName: safeFirst, lastName: safeLast, gender: newVal.gender, grade: newVal.grade || '', requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
+                    this.form = { firstName: safeFirst, lastName: safeLast, gender: newVal.gender, grade: newVal.grade || '', notes: newVal.notes || '', requiresPreferredSeating: newVal.requiresPreferredSeating, isHomeroom: newVal.isHomeroom };
                 } else {
-                    this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false };
+                    this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', notes: '', requiresPreferredSeating: false, isHomeroom: false };
                 }
             }
         }
@@ -104,7 +108,7 @@ export const StudentControls = {
         },
         cancelEdit() {
             DataStore.setEditingStudent(null);
-            this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', requiresPreferredSeating: false, isHomeroom: false };
+            this.form = { firstName: '', lastName: '', gender: 'Unspecified', grade: '', notes: '', requiresPreferredSeating: false, isHomeroom: false };
         },
         addRestriction() {
             DataStore.addRestriction(this.restriction.student1, this.restriction.student2);
