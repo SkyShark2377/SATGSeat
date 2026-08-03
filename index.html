@@ -512,17 +512,31 @@
                 window.addEventListener('cloud-data-received', (e) => {
                     const data = JSON.parse(e.detail);
                     
+                    // 1. Save everything to local storage silently
                     for (const key in data) {
                         localStorage.setItem(key, data[key]);
                     }
                     
+                    // 2. Unpack the master state and force Vue to update the UI
                     const masterState = JSON.parse(localStorage.getItem('ClassroomSeatingSuite_v2'));
                     if (masterState) {
                         this.store.classrooms = masterState.classrooms || {};
                         this.store.periods = masterState.periods || {};
                         this.store.students = masterState.students || {};
                         this.store.settings = masterState.settings || {};
+                        
+                        // NEW: Make sure we also grab the UI state so it knows what room is active!
+                        if (masterState.ui) {
+                            this.store.ui = masterState.ui;
+                        }
                     }
+                    
+                    // 3. Sync the Vue tab to match the active tab from the database
+                    if (this.store.ui && this.store.ui.currentTab) {
+                        this.currentTab = this.store.ui.currentTab;
+                    }
+
+                    // 4. Force the engine to redraw
                     this.refreshCanvasEnvironment();
                 });
 
