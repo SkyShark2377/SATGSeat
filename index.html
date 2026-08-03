@@ -56,36 +56,22 @@
                     <div class="flex items-center gap-3">
                         <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
                         
-                        <!-- Cloud Status Pill & Manual Sync Controls -->
-                        <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-2">
+                        <!-- Status Pill (With Lock Indicator) -->
+                        <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
+                             :class="{
+                                'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected' && !store.settings.isReadOnlyMode,
+                                'bg-orange-50 text-orange-700 border-orange-200': syncStatus === 'connected' && store.settings.isReadOnlyMode,
+                                'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
+                                'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
+                             }">
                             
-                            <!-- Manual Push Button (Only visible when locked) -->
-                            <button v-if="store.settings.isReadOnlyMode" @click="forceCloudPush" class="flex items-center gap-1 bg-white border border-slate-300 hover:bg-orange-50 text-slate-700 hover:text-orange-700 px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase transition" title="Overwrite cloud with this layout">
-                                ⬆️ Push
-                            </button>
-
-                            <!-- Manual Pull Button -->
-                            <button @click="forceCloudPull" class="flex items-center gap-1 bg-white border border-slate-300 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase transition" title="Pull latest layout from cloud">
-                                ⬇️ Pull
-                            </button>
-
-                            <!-- Status Pill (With Lock Indicator) -->
-                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
-                                 :class="{
-                                    'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected' && !store.settings.isReadOnlyMode,
-                                    'bg-orange-50 text-orange-700 border-orange-200': syncStatus === 'connected' && store.settings.isReadOnlyMode,
-                                    'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
-                                    'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
-                                 }">
-                                
-                                <span v-if="store.settings.isReadOnlyMode" title="Read-Only Mode Active" class="text-[10px] leading-none">🔒</span>
-                                <span v-else class="relative flex h-1.5 w-1.5">
-                                  <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                  <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
-                                </span>
-                                
-                                {{ syncStatus }}
-                            </div>
+                            <span v-if="store.settings.isReadOnlyMode" title="Read-Only Mode Active" class="text-[10px] leading-none">🔒</span>
+                            <span v-else class="relative flex h-1.5 w-1.5">
+                              <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
+                            </span>
+                            
+                            {{ syncStatus }}
                         </div>
                     </div>
                     <div class="flex gap-2">
@@ -101,14 +87,28 @@
                     <input type="file" ref="restoreInput" @change="handleAppRestore" accept=".json" class="hidden">
                     <button @click="handleAppBackup(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">💾 Save Backup</button>
                     
-                    <button v-if="store.settings.isSyncUnlocked" @click="openCloudSync(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-2 border-t border-blue-100">
-                        ☁️ Cloud Sync
-                    </button>
-                    
-                    <!-- Read-Only Toggle -->
-                    <button v-if="syncStatus !== 'disconnected'" @click="toggleReadOnlyMode(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-orange-700 hover:bg-orange-50 flex items-center gap-2 border-t border-orange-100 transition">
-                        <span v-text="store.settings.isReadOnlyMode ? '🔓 Disable Read-Only Mode' : '🔒 Enable Read-Only Mode'"></span>
-                    </button>
+                    <!-- CLOUD SYNC MENU GROUP -->
+                    <template v-if="store.settings.isSyncUnlocked">
+                        <hr class="my-1 border-gray-200">
+                        
+                        <button @click="openCloudSync(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-2">
+                            ☁️ Cloud Sync Setup
+                        </button>
+                        
+                        <template v-if="syncStatus !== 'disconnected'">
+                            <button @click="forceCloudPull(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+                                ☁️⬇️ Load Cloud Layout
+                            </button>
+                            
+                            <button v-if="store.settings.isReadOnlyMode" @click="forceCloudPush(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-orange-700 hover:bg-orange-50 flex items-center gap-2">
+                                ☁️⬆️ Save to Cloud
+                            </button>
+                            
+                            <button @click="toggleReadOnlyMode(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-2 border-t border-slate-100">
+                                <span v-text="store.settings.isReadOnlyMode ? '🔓 Disable Read-Only Mode' : '🔒 Enable Read-Only Mode'"></span>
+                            </button>
+                        </template>
+                    </template>
                     
                     <hr class="my-1 border-gray-200">
                     
@@ -544,7 +544,17 @@
                         this.store.classrooms = masterState.classrooms || {};
                         this.store.periods = masterState.periods || {};
                         this.store.students = masterState.students || {};
+                        
+                        // FIX: Preserve device-specific hardware states before unpacking settings!
+                        const localReadOnly = this.store.settings.isReadOnlyMode;
+                        const localUnlocked = this.store.settings.isSyncUnlocked;
+                        
                         this.store.settings = masterState.settings || {};
+                        
+                        // Re-apply local device settings
+                        this.store.settings.isReadOnlyMode = localReadOnly;
+                        this.store.settings.isSyncUnlocked = localUnlocked;
+                        DataStore.persist();
                         
                         if (masterState.ui) {
                             this.store.ui = masterState.ui;
@@ -557,7 +567,7 @@
 
                     this.refreshCanvasEnvironment();
 
-                    // Wait half a second for CanvasEngine to finish its auto-saves, then unlock
+                    // Wait 1.5 seconds for CanvasEngine to finish its auto-saves, then unlock
                     setTimeout(() => {
                         CloudSync.isReceiving = false;
                     }, 1500);
@@ -574,13 +584,17 @@
                 // Auto-connect on startup if a key was previously saved
                 const savedSyncKey = localStorage.getItem('Sync_WorkspaceKey');
                 
-                // Apply the lock on boot if it was saved
-                if (this.store.settings.isReadOnlyMode) {
-                    CloudSync.isReadOnly = true;
-                }
-
                 if (savedSyncKey && this.store.settings.isSyncUnlocked) {
+                    // Force the device to Read-Only mode immediately on boot
+                    this.store.settings.isReadOnlyMode = true;
+                    CloudSync.isReadOnly = true;
+                    DataStore.persist();
+                    
                     CloudSync.init(savedSyncKey);
+                } else if (!this.store.settings.isSyncUnlocked) {
+                    // Ensure normal local-storage users don't get trapped in Read-Only!
+                    this.store.settings.isReadOnlyMode = false;
+                    CloudSync.isReadOnly = false;
                 }
 
                 this.$nextTick(() => { this.refreshCanvasEnvironment(); });
