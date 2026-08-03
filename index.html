@@ -56,18 +56,27 @@
                     <div class="flex items-center gap-3">
                         <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
                         
-                        <!-- Cloud Status Pill -->
-                        <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
-                             :class="{
-                                'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected',
-                                'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
-                                'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
-                             }">
-                            <span class="relative flex h-1.5 w-1.5">
-                              <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                              <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
-                            </span>
-                            {{ syncStatus }}
+                        <!-- Cloud Status Pill & Manual Pull -->
+                        <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-2">
+                            
+                            <!-- NEW: Manual Pull Button -->
+                            <button @click="forceCloudPull" class="flex items-center gap-1 bg-white border border-slate-300 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase transition" title="Pull latest layout from cloud">
+                                ⬇️ Pull
+                            </button>
+
+                            <!-- Existing Status Pill -->
+                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
+                                 :class="{
+                                    'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected',
+                                    'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
+                                    'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
+                                 }">
+                                <span class="relative flex h-1.5 w-1.5">
+                                  <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
+                                </span>
+                                {{ syncStatus }}
+                            </div>
                         </div>
                     </div>
                     <div class="flex gap-2">
@@ -540,7 +549,7 @@
                     // NEW: Wait half a second for CanvasEngine to finish its auto-saves, then unlock
                     setTimeout(() => {
                         CloudSync.isReceiving = false;
-                    }, 500);
+                    }, 1500);
                 });
 
                 // Trigger saves
@@ -550,6 +559,12 @@
                 window.addEventListener('datastore-modified', () => {
                     if (CloudSync.syncKey) CloudSync.triggerPush();
                 });
+				
+				// Auto-connect on startup if a key was previously saved
+                const savedSyncKey = localStorage.getItem('Sync_WorkspaceKey');
+                if (savedSyncKey && this.store.settings.isSyncUnlocked) {
+                    CloudSync.init(savedSyncKey);
+                }
 
                 this.$nextTick(() => { this.refreshCanvasEnvironment(); });
             },
@@ -593,10 +608,31 @@
                 },
                 
                 openCloudSync() {
-                    const key = prompt("Enter your Workspace Sync Key (e.g., Room104_2026):\n\nUse the exact same key on all devices to link them.");
-                    if (key && key.trim() !== "") {
-                        CloudSync.init(key.trim());
-                        alert(`☁️ Connected to Cloud Workspace: ${key.trim()}`);
+                    // Check if we already have a key saved to pre-fill the box
+                    const currentKey = localStorage.getItem('Sync_WorkspaceKey') || "";
+                    const key = prompt("Enter your Workspace Sync Key (e.g., Room104_2026):\n\nLeave blank to disconnect.", currentKey);
+                    
+                    if (key !== null) { // If they didn't click Cancel
+                        if (key.trim() === "") {
+                            // Disconnect and wipe memory
+                            localStorage.removeItem('Sync_WorkspaceKey');
+                            CloudSync.syncKey = null; 
+                            this.syncStatus = 'disconnected';
+                            alert('☁️ Cloud Sync Disconnected.');
+                        } else {
+                            // Connect and save to memory
+                            localStorage.setItem('Sync_WorkspaceKey', key.trim());
+                            CloudSync.init(key.trim());
+                            alert(`☁️ Connected to Cloud Workspace: ${key.trim()}`);
+                        }
+                    }
+                },
+				
+				forceCloudPull() {
+                    if (CloudSync.syncKey) {
+                        CloudSync.pullData();
+                    } else {
+                        alert("Please connect to a Cloud Workspace first.");
                     }
                 },
 				

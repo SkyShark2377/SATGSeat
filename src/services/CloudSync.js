@@ -1,6 +1,7 @@
 // src/services/CloudSync.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+// Notice we swapped onSnapshot for getDoc here:
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCJCNngnXu19YmXOHg7esaZk8EVqTwQgvg",
@@ -16,12 +17,8 @@ const db = getFirestore(app);
 
 export const CloudSync = {
     syncKey: null,
-    unsubscribe: null,
     pendingTimeout: null,
     isReceiving: false,
-    
-    // NEW: Memory bank to kill server echoes
-    lastKnownPayload: null, 
 
     setStatus(status) {
         window.dispatchEvent(new CustomEvent('cloud-status', { detail: { status } }));
@@ -29,23 +26,27 @@ export const CloudSync = {
 
     init(key) {
         this.syncKey = key;
-        const docRef = doc(db, "workspaces", this.syncKey);
-        
         this.setStatus('connected');
         console.log(`☁️ Cloud Sync Connected to: ${key}`);
+        
+        // Fetch the newest data immediately when she opens the app
+        this.pullData();
+    },
 
-        this.unsubscribe = onSnapshot(docRef, (snapshot) => {
-            if (snapshot.metadata.hasPendingWrites) return;
-
+    // NEW: Manual one-time fetch instead of a continuous real-time listener
+    async pullData() {
+        if (!this.syncKey) return;
+        
+        this.setStatus('syncing'); 
+        this.isReceiving = true; // Lock the transmitter so we don't push while unpacking
+        
+        try {
+            const docRef = doc(db, "workspaces", this.syncKey);
+            const snapshot = await getDoc(docRef); // One-time read
+            
             if (snapshot.exists()) {
                 const data = snapshot.data();
                 
-                // NEW: THE ECHO KILLER
-                // If the incoming data is identical to what we just sent (or already received), ignore it!
-                if (data.payload === this.lastKnownPayload) return;
-                
-                this.lastKnownPayload = data.payload;
-
                 if (localStorage.getItem('CS_OfflineChanges') === 'true') {
                     window.dispatchEvent(new CustomEvent('cloud-conflict', { detail: data.payload }));
                     return;
@@ -53,12 +54,17 @@ export const CloudSync = {
 
                 if (data.payload) {
                     window.dispatchEvent(new CustomEvent('cloud-data-received', { detail: data.payload }));
-                    this.setStatus('connected');
                 }
             }
-        });
+            this.setStatus('connected');
+        } catch (e) {
+            console.error("☁️ Cloud Sync Pull Failed", e);
+            this.setStatus('error');
+            this.isReceiving = false;
+        }
     },
 
+    // Push remains exactly the same! (But we removed the memory JSON checker since there are no more echoes)
     triggerPush() {
         if (!this.syncKey || this.isReceiving) return; 
         
@@ -74,13 +80,9 @@ export const CloudSync = {
             this.setStatus('syncing'); 
 
             try {
-                // NEW: Memorize exactly what we are sending to the server BEFORE we send it
-                const payloadString = this.getCloudPayload();
-                this.lastKnownPayload = payloadString;
-
                 const docRef = doc(db, "workspaces", this.syncKey);
                 await setDoc(docRef, {
-                    payload: payloadString,
+                    payload: this.getCloudPayload(),
                     lastUpdated: serverTimestamp()
                 });
                 
@@ -88,7 +90,7 @@ export const CloudSync = {
                 this.setStatus('connected');
                 
             } catch (e) {
-                console.error("☁️ Cloud Sync Failed", e);
+                console.error("☁️ Cloud Sync Push Failed", e);
                 this.setStatus('error');
             }
         }, 1000); 
@@ -96,11 +98,16 @@ export const CloudSync = {
 
     getCloudPayload() {
         const dump = {};
+        const keys = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key === 'ClassroomSeatingSuite_v2' || key.startsWith('CS_')) { 
-                dump[key] = localStorage.getItem(key);
+                keys.push(key);
             }
+        }
+        keys.sort();
+        for (const key of keys) {
+            dump[key] = localStorage.getItem(key);
         }
         return JSON.stringify(dump);
     }
