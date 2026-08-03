@@ -17,10 +17,9 @@ const db = getFirestore(app);
 export const CloudSync = {
     syncKey: null,
     unsubscribe: null,
-    isPushing: false,
     pendingTimeout: null,
+    isReceiving: false, // NEW: Lock to prevent infinite ping-pong loops
 
-    // NEW: Broadcast status to Vue
     setStatus(status) {
         window.dispatchEvent(new CustomEvent('cloud-status', { detail: { status } }));
     },
@@ -33,13 +32,12 @@ export const CloudSync = {
         console.log(`☁️ Cloud Sync Connected to: ${key}`);
 
         this.unsubscribe = onSnapshot(docRef, (snapshot) => {
-            if (this.isPushing) return; // Ignore our own pushes
+            // NEW: Ignore local echoes! Firebase immediately fires this when WE click save.
+            if (snapshot.metadata.hasPendingWrites) return;
 
             if (snapshot.exists()) {
                 const data = snapshot.data();
                 
-                // NEW: Conflict Detection
-                // If we have offline changes waiting, don't overwrite them automatically!
                 if (localStorage.getItem('CS_OfflineChanges') === 'true') {
                     window.dispatchEvent(new CustomEvent('cloud-conflict', { detail: data.payload }));
                     return;
@@ -54,9 +52,9 @@ export const CloudSync = {
     },
 
     triggerPush() {
-        if (!this.syncKey) return;
+        // NEW: Do not push to the cloud if we are currently unpacking a cloud update!
+        if (!this.syncKey || this.isReceiving) return; 
         
-        // NEW: Check if the computer has lost WiFi
         if (!navigator.onLine) {
             localStorage.setItem('CS_OfflineChanges', 'true');
             this.setStatus('offline');
@@ -66,8 +64,7 @@ export const CloudSync = {
         if (this.pendingTimeout) clearTimeout(this.pendingTimeout);
         
         this.pendingTimeout = setTimeout(async () => {
-            this.isPushing = true;
-            this.setStatus('syncing'); // Announce UI change
+            this.setStatus('syncing'); 
 
             try {
                 const docRef = doc(db, "workspaces", this.syncKey);
@@ -76,17 +73,14 @@ export const CloudSync = {
                     lastUpdated: serverTimestamp()
                 });
                 
-                // Success! Clear any offline flags.
                 localStorage.removeItem('CS_OfflineChanges');
                 this.setStatus('connected');
                 
             } catch (e) {
                 console.error("☁️ Cloud Sync Failed", e);
                 this.setStatus('error');
-            } finally {
-                setTimeout(() => { this.isPushing = false; }, 1000);
             }
-        }, 1000);
+        }, 1000); 
     },
 
     getCloudPayload() {
