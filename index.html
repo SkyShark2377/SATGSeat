@@ -53,8 +53,22 @@
             <!-- CONSOLIDATED HEADER START -->
             <div class="p-4 border-b border-gray-200 flex flex-col gap-3 shrink-0 relative">
                 <div class="flex justify-between items-center">
-                    <div class="flex items-baseline gap-2">
+                    <div class="flex items-center gap-3">
                         <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
+                        
+                        <!-- Cloud Status Pill -->
+                        <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
+                             :class="{
+                                'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected',
+                                'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
+                                'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
+                             }">
+                            <span class="relative flex h-1.5 w-1.5">
+                              <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
+                            </span>
+                            {{ syncStatus }}
+                        </div>
                     </div>
                     <div class="flex gap-2">
                         <button @click="showHelpModal = true" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-bold transition">?</button>
@@ -69,6 +83,10 @@
                     <input type="file" ref="restoreInput" @change="handleAppRestore" accept=".json" class="hidden">
                     <button @click="handleAppBackup(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">💾 Save Backup</button>
                     
+					<button v-if="store.settings.isSyncUnlocked" @click="openCloudSync(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-2 border-t border-blue-100">
+                        ☁️ Cloud Sync
+                    </button>
+					
                     <hr class="my-1 border-gray-200">
                     
                     <button @click="exportSeatingPDF(); showGlobalMenu = false" :disabled="currentTab !== 'seating'" :class="currentTab === 'seating' ? 'text-emerald-700 hover:bg-emerald-50' : 'text-gray-400 cursor-not-allowed'" class="px-4 py-2.5 text-left text-xs font-bold flex items-center gap-2 transition">🖨️ Export PDF (Seating)</button>
@@ -267,6 +285,32 @@
             </div>
         </div>
 		
+		<!-- NEW: Offline Conflict Modal -->
+        <div v-if="showConflictModal" class="absolute inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden border border-rose-200">
+                <div class="bg-rose-600 text-white px-5 py-4 flex items-center gap-2 shrink-0">
+                    <span class="text-xl">⚠️</span>
+                    <h2 class="text-base font-black tracking-wide">Sync Conflict Detected</h2>
+                </div>
+                
+                <div class="p-6 text-sm text-gray-700 bg-rose-50 flex flex-col gap-3">
+                    <p>You made changes to your seating chart while your device was <strong>offline</strong>.</p>
+                    <p>However, the Cloud currently has a different layout saved. Which version do you want to keep?</p>
+                </div>
+                
+                <div class="bg-white px-5 py-4 flex flex-col gap-3 border-t border-slate-200">
+                    <button @click="resolveConflict('local')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow transition flex justify-between items-center">
+                        <span>Keep Local Layout</span>
+                        <span class="text-xs font-normal opacity-80">(Overwrite Cloud)</span>
+                    </button>
+                    <button @click="resolveConflict('cloud')" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg transition flex justify-between items-center">
+                        <span>Load Cloud Layout</span>
+                        <span class="text-xs font-normal opacity-70">(Discard Local Changes)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+		
 		<!-- Bulk Anchor Modal -->
         <div v-if="showBulkAnchorModal" class="absolute inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
@@ -304,12 +348,12 @@
             </div>
         </div>
 
+		<!-- BUILD VERSION -->
+		<div @click="handleDevUnlock" class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider z-50 cursor-default select-none transition hover:text-slate-500">
+			v1.0.0
+		</div>
+
     </div> 
-    
-	<!-- BUILD VERSION -->
-	<div class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider pointer-events-none z-50">
-		v1.0.0
-	</div>
 	
     <script type="module">
         import { DataStore } from './src/services/DataStore.js';
@@ -324,6 +368,7 @@
         import { LayoutControls } from './src/components/LayoutControls.js';
         import { RoomControls } from './src/components/RoomControls.js';
         import { RoomMenu } from './src/components/RoomMenu.js';     
+		import { CloudSync } from './src/services/CloudSync.js';
         
         const { createApp } = Vue;
         DataStore.init();
@@ -358,6 +403,12 @@
                     bulkAnchorData: [],
 					isBoardMode: false,
 					showGlobalMenu: false,
+					devClickCount: 0,
+                    devClickTimer: null,
+					// Sync State variables
+                    syncStatus: 'disconnected',
+                    showConflictModal: false,
+                    pendingCloudPayload: null,
                 };
             },
             watch: {
@@ -400,7 +451,7 @@
                         this.editingSeat.studentName = '';
                     }
                     this.showSeatModal = true;
-                }); // <-- THIS WAS MISSING!
+                });
 
                 // Secret DB Wipe Shortcut (Ctrl + Shift + Alt + W)
                 window.addEventListener('keydown', (e) => {
@@ -410,6 +461,77 @@
                             this.devWipeDatabase();
                         }
                     }
+                });
+				
+				// --- CLOUD SYNC LISTENERS ---
+				// 1. When the cloud sends us new data (from another device)
+                window.addEventListener('cloud-data-received', (e) => {
+                    const data = JSON.parse(e.detail);
+                    
+                    // Save everything to local storage silently
+                    for (const key in data) {
+                        localStorage.setItem(key, data[key]);
+                    }
+                    
+                    // Unpack the master state and force Vue to update the UI
+                    const masterState = JSON.parse(localStorage.getItem('ClassroomSeatingSuite_v2'));
+                    if (masterState) {
+                        this.store.classrooms = masterState.classrooms || {};
+                        this.store.periods = masterState.periods || {};
+                        this.store.students = masterState.students || {};
+                        this.store.settings = masterState.settings || {};
+                    }
+                    
+                    this.refreshCanvasEnvironment();
+                });
+				
+                // Status changes
+                window.addEventListener('cloud-status', (e) => {
+                    this.syncStatus = e.detail.status;
+                });
+                
+                // Conflict detection
+                window.addEventListener('cloud-conflict', (e) => {
+                    this.pendingCloudPayload = e.detail;
+                    this.showConflictModal = true;
+                });
+
+                // Listen for physical internet dropouts
+                window.addEventListener('offline', () => {
+                    if (this.syncStatus !== 'disconnected') this.syncStatus = 'offline';
+                });
+                window.addEventListener('online', () => {
+                    if (this.syncStatus === 'offline') {
+                        this.syncStatus = 'connected';
+                        // Trigger a push attempt just in case there are offline changes waiting
+                        window.dispatchEvent(new CustomEvent('datastore-modified'));
+                    }
+                });
+
+                // Standard payload receiver
+                window.addEventListener('cloud-data-received', (e) => {
+                    const data = JSON.parse(e.detail);
+                    
+                    for (const key in data) {
+                        localStorage.setItem(key, data[key]);
+                    }
+                    
+                    const masterState = JSON.parse(localStorage.getItem('ClassroomSeatingSuite_v2'));
+                    if (masterState) {
+                        this.store.classrooms = masterState.classrooms || {};
+                        this.store.periods = masterState.periods || {};
+                        this.store.students = masterState.students || {};
+                        this.store.settings = masterState.settings || {};
+                    }
+                    this.refreshCanvasEnvironment();
+                });
+
+                // Trigger saves
+                window.addEventListener('canvas-layout-modified', () => {
+                    if (CloudSync.syncKey) CloudSync.triggerPush();
+                });
+                window.addEventListener('datastore-modified', () => {
+                    if (CloudSync.syncKey) CloudSync.triggerPush();
                 });
 
                 this.$nextTick(() => { this.refreshCanvasEnvironment(); });
@@ -425,6 +547,39 @@
                     if (file) {
                         DataStore.importData(file);
                         event.target.value = ''; 
+                    }
+                },
+				handleDevUnlock() {
+                    this.devClickCount++;
+                    
+                    if (this.devClickTimer) clearTimeout(this.devClickTimer);
+                    
+                    // If they tap 5 times fast enough
+                    if (this.devClickCount >= 5) {
+                        this.devClickCount = 0; 
+                        
+                        if (!this.store.settings.isSyncUnlocked) {
+                            this.store.settings.isSyncUnlocked = true;
+                            DataStore.persist();
+                            alert('🔓 Cloud Sync Enabled! The sync menu is now permanently unlocked on this device.');
+                        } else {
+                            this.store.settings.isSyncUnlocked = false;
+                            DataStore.persist();
+                            alert('🔒 Cloud Sync Hidden.');
+                        }
+                    } else {
+                        // Reset counter if they pause for half a second
+                        this.devClickTimer = setTimeout(() => {
+                            this.devClickCount = 0;
+                        }, 500);
+                    }
+                },
+                
+                openCloudSync() {
+                    const key = prompt("Enter your Workspace Sync Key (e.g., Room104_2026):\n\nUse the exact same key on all devices to link them.");
+                    if (key && key.trim() !== "") {
+                        CloudSync.init(key.trim());
+                        alert(`☁️ Connected to Cloud Workspace: ${key.trim()}`);
                     }
                 },
 				
@@ -556,7 +711,37 @@
                         }
                     }
                     this.showSeatModal = false;
-                }
+                },
+				// --- SYNC MODAL HANDLER ---
+                resolveConflict(choice) {
+                    if (choice === 'local') {
+                        // Clear the offline flag and force a push upward
+                        localStorage.removeItem('CS_OfflineChanges');
+                        window.dispatchEvent(new CustomEvent('datastore-modified'));
+                        
+                    } else if (choice === 'cloud') {
+                        // Clear the offline flag and accept the pending data downward
+                        localStorage.removeItem('CS_OfflineChanges');
+                        
+                        const data = JSON.parse(this.pendingCloudPayload);
+                        for (const key in data) {
+                            localStorage.setItem(key, data[key]);
+                        }
+                        
+                        const masterState = JSON.parse(localStorage.getItem('ClassroomSeatingSuite_v2'));
+                        if (masterState) {
+                            this.store.classrooms = masterState.classrooms || {};
+                            this.store.periods = masterState.periods || {};
+                            this.store.students = masterState.students || {};
+                            this.store.settings = masterState.settings || {};
+                        }
+                        this.refreshCanvasEnvironment();
+                    }
+                    
+                    // Close the modal
+                    this.showConflictModal = false;
+                    this.pendingCloudPayload = null;
+                },
             }
         }).mount('#app');
     </script>

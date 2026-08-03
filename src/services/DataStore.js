@@ -48,10 +48,14 @@ export const DataStore = {
         }
         if (!this.state.settings.rosterGradeFilter) this.state.settings.rosterGradeFilter = 'all';
         if (!this.state.settings.periodGradeFilter) this.state.settings.periodGradeFilter = 'all';
+		if (this.state.settings.isSyncUnlocked === undefined) {
+            this.state.settings.isSyncUnlocked = false; 
+        }
     },
 
     persist() {
         localStorage.setItem('ClassroomSeatingSuite_v2', JSON.stringify(this.state));
+        window.dispatchEvent(new CustomEvent('datastore-modified'));
     },
 
     devWipeDatabase() {
