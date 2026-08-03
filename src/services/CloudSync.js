@@ -1,6 +1,5 @@
 // src/services/CloudSync.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-// Notice we swapped onSnapshot for getDoc here:
 import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -19,6 +18,7 @@ export const CloudSync = {
     syncKey: null,
     pendingTimeout: null,
     isReceiving: false,
+    isReadOnly: false, // The Board Lock
 
     setStatus(status) {
         window.dispatchEvent(new CustomEvent('cloud-status', { detail: { status } }));
@@ -49,18 +49,16 @@ export const CloudSync = {
                 
                 if (localStorage.getItem('CS_OfflineChanges') === 'true') {
                     window.dispatchEvent(new CustomEvent('cloud-conflict', { detail: data.payload }));
-                    this.isReceiving = false; // FIX: Unlock so she can push her local conflict choice!
+                    this.isReceiving = false; 
                     return;
                 }
 
                 if (data.payload) {
                     window.dispatchEvent(new CustomEvent('cloud-data-received', { detail: data.payload }));
-                    // If data exists, the 2.5s timer in index.html will handle the unlock
                 } else {
-                    this.isReceiving = false; // FIX: Unlock if payload is mysteriously empty
+                    this.isReceiving = false; 
                 }
             } else {
-                // THE SMOKING GUN FIX: The workspace doesn't exist yet!
                 console.log("☁️ Brand new workspace detected. Transmitter unlocked.");
                 this.isReceiving = false; 
             }
@@ -69,13 +67,13 @@ export const CloudSync = {
         } catch (e) {
             console.error("☁️ Cloud Sync Pull Failed", e);
             this.setStatus('error');
-            this.isReceiving = false; // FIX: Always unlock if the network fails
+            this.isReceiving = false; 
         }
     },
 
-    // Push remains exactly the same! (But we removed the memory JSON checker since there are no more echoes)
     triggerPush() {
-        if (!this.syncKey || this.isReceiving) return; 
+        // If the board is locked (isReadOnly), abort the push immediately!
+        if (!this.syncKey || this.isReceiving || this.isReadOnly) return; 
         
         if (!navigator.onLine) {
             localStorage.setItem('CS_OfflineChanges', 'true');
@@ -103,6 +101,33 @@ export const CloudSync = {
                 this.setStatus('error');
             }
         }, 1000); 
+    },
+
+    // Manual override to push data even if Read-Only mode is active
+    async forcePush() {
+        if (!this.syncKey || this.isReceiving) return; 
+        
+        if (!navigator.onLine) {
+            localStorage.setItem('CS_OfflineChanges', 'true');
+            this.setStatus('offline');
+            return;
+        }
+        
+        this.setStatus('syncing'); 
+
+        try {
+            const docRef = doc(db, "workspaces", this.syncKey);
+            await setDoc(docRef, {
+                payload: this.getCloudPayload(),
+                lastUpdated: serverTimestamp()
+            });
+            
+            localStorage.removeItem('CS_OfflineChanges');
+            this.setStatus('connected');
+        } catch (e) {
+            console.error("☁️ Cloud Sync Push Failed", e);
+            this.setStatus('error');
+        }
     },
 
     getCloudPayload() {

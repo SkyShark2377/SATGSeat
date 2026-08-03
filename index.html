@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Classroom Seating Manager</title>
     
-    <!-- 1. LOCAL LIBRARIES (Replaced the unpkg/cloudflare/jsdelivr links) -->
+    <!-- 1. LOCAL LIBRARIES -->
     <script src="./lib/tailwindcss.js"></script>
     <script src="./lib/vue.global.js"></script>
     <script src="./lib/fabric.min.js"></script>
@@ -49,53 +49,67 @@
     <div id="app" v-cloak class="flex w-full h-full">
 
         <aside class="w-84 bg-white flex flex-col border-r border-gray-300 shadow-sm z-10 shrink-0">
-		
+        
             <!-- CONSOLIDATED HEADER START -->
             <div class="p-4 border-b border-gray-200 flex flex-col gap-3 shrink-0 relative">
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-3">
                         <h1 class="font-black text-gray-800 tracking-wide uppercase">Dashboard</h1>
                         
-                        <!-- Cloud Status Pill & Manual Pull -->
+                        <!-- Cloud Status Pill & Manual Sync Controls -->
                         <div v-if="syncStatus !== 'disconnected'" class="flex items-center gap-2">
                             
-                            <!-- NEW: Manual Pull Button -->
+                            <!-- Manual Push Button (Only visible when locked) -->
+                            <button v-if="store.settings.isReadOnlyMode" @click="forceCloudPush" class="flex items-center gap-1 bg-white border border-slate-300 hover:bg-orange-50 text-slate-700 hover:text-orange-700 px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase transition" title="Overwrite cloud with this layout">
+                                ⬆️ Push
+                            </button>
+
+                            <!-- Manual Pull Button -->
                             <button @click="forceCloudPull" class="flex items-center gap-1 bg-white border border-slate-300 hover:bg-blue-50 text-slate-700 hover:text-blue-700 px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase transition" title="Pull latest layout from cloud">
                                 ⬇️ Pull
                             </button>
 
-                            <!-- Existing Status Pill -->
+                            <!-- Status Pill (With Lock Indicator) -->
                             <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition-colors shadow-sm" 
                                  :class="{
-                                    'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected',
+                                    'bg-emerald-50 text-emerald-700 border-emerald-200': syncStatus === 'connected' && !store.settings.isReadOnlyMode,
+                                    'bg-orange-50 text-orange-700 border-orange-200': syncStatus === 'connected' && store.settings.isReadOnlyMode,
                                     'bg-blue-50 text-blue-700 border-blue-200': syncStatus === 'syncing',
                                     'bg-rose-50 text-rose-700 border-rose-200': syncStatus === 'offline' || syncStatus === 'error'
                                  }">
-                                <span class="relative flex h-1.5 w-1.5">
+                                
+                                <span v-if="store.settings.isReadOnlyMode" title="Read-Only Mode Active" class="text-[10px] leading-none">🔒</span>
+                                <span v-else class="relative flex h-1.5 w-1.5">
                                   <span v-if="syncStatus === 'syncing'" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                                   <span class="relative inline-flex rounded-full h-1.5 w-1.5" :class="syncStatus === 'connected' ? 'bg-emerald-500' : (syncStatus === 'syncing' ? 'bg-blue-500' : 'bg-rose-500')"></span>
                                 </span>
+                                
                                 {{ syncStatus }}
                             </div>
                         </div>
                     </div>
                     <div class="flex gap-2">
                         <button @click="showHelpModal = true" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded font-bold transition">?</button>
-                        <!-- NEW: Settings Toggle Button -->
+                        <!-- Settings Toggle Button -->
                         <button @click="showGlobalMenu = !showGlobalMenu" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-bold transition">⚙️</button>
                     </div>
                 </div>
                 
-                <!-- NEW: Settings Dropdown -->
+                <!-- Settings Dropdown -->
                 <div v-if="showGlobalMenu" class="absolute top-12 right-4 w-56 bg-white border border-gray-200 rounded-lg shadow-2xl z-[100] flex flex-col py-1 overflow-hidden">
                     <button @click="$refs.restoreInput.click(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">📂 Restore Backup</button>
                     <input type="file" ref="restoreInput" @change="handleAppRestore" accept=".json" class="hidden">
                     <button @click="handleAppBackup(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-100 flex items-center gap-2">💾 Save Backup</button>
                     
-					<button v-if="store.settings.isSyncUnlocked" @click="openCloudSync(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-2 border-t border-blue-100">
+                    <button v-if="store.settings.isSyncUnlocked" @click="openCloudSync(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-2 border-t border-blue-100">
                         ☁️ Cloud Sync
                     </button>
-					
+                    
+                    <!-- Read-Only Toggle -->
+                    <button v-if="syncStatus !== 'disconnected'" @click="toggleReadOnlyMode(); showGlobalMenu = false" class="px-4 py-2.5 text-left text-xs font-bold text-orange-700 hover:bg-orange-50 flex items-center gap-2 border-t border-orange-100 transition">
+                        <span v-text="store.settings.isReadOnlyMode ? '🔓 Disable Read-Only Mode' : '🔒 Enable Read-Only Mode'"></span>
+                    </button>
+                    
                     <hr class="my-1 border-gray-200">
                     
                     <button @click="exportSeatingPDF(); showGlobalMenu = false" :disabled="currentTab !== 'seating'" :class="currentTab === 'seating' ? 'text-emerald-700 hover:bg-emerald-50' : 'text-gray-400 cursor-not-allowed'" class="px-4 py-2.5 text-left text-xs font-bold flex items-center gap-2 transition">🖨️ Export PDF (Seating)</button>
@@ -173,7 +187,7 @@
                         <input type="text" v-model="editingAsset.label" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm">
                     </div>
                     
-					<div>
+                    <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Elevation Level</label>
                         <select v-model.number="editingAsset.elevation" class="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 outline-none shadow-sm bg-white">
                             <option value="1">1 - Floor Level (Under Desks)</option>
@@ -183,7 +197,7 @@
                             <option value="5">5 - Ceiling (Absolute Top)</option>
                         </select>
                     </div>
-					
+                    
                     <div class="grid grid-cols-2 gap-3 mb-3">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Width</label>
@@ -212,8 +226,8 @@
                             </div>
                         </div>
                     </div>
-					
-					<!-- NEW: Color Pickers -->
+                    
+                    <!-- Color Pickers -->
                     <div class="grid grid-cols-3 gap-3">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Fill</label>
@@ -228,7 +242,7 @@
                             <input type="color" v-model="editingAsset.textFill" class="w-full h-8 cursor-pointer rounded border border-slate-300 p-0.5 bg-white">
                         </div>
                     </div>
-					
+                    
                     <div class="mt-2 bg-white border border-slate-200 p-3 rounded shadow-sm flex items-center justify-between cursor-pointer" @click="editingAsset.isLocked = !editingAsset.isLocked">
                         <div>
                             <span class="text-xs font-bold text-slate-700 block">Lock Position & Size</span>
@@ -274,13 +288,10 @@
                         <button v-if="editingSeat.isAnchored && store.ui.activePeriodId === 'period_homeroom_base'" @click="removeAnchor" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 font-bold py-3 rounded-lg shadow-sm transition text-xs flex justify-center items-center gap-2 mt-2">
                             ⚓ Remove Anchor
                         </button>
-						<button v-if="!editingSeat.isAnchored && editingSeat.studentId && store.ui.activePeriodId === 'period_homeroom_base'" @click="addAnchor" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 font-bold py-3 rounded-lg shadow-sm transition text-xs flex justify-center items-center gap-2 mt-2">
+                        <button v-if="!editingSeat.isAnchored && editingSeat.studentId && store.ui.activePeriodId === 'period_homeroom_base'" @click="addAnchor" class="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 font-bold py-3 rounded-lg shadow-sm transition text-xs flex justify-center items-center gap-2 mt-2">
                             ⚓ Set Anchor Here
                         </button>
                         
-                        <div v-else-if="editingSeat.isAnchored" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-lg shadow-sm border border-slate-200 text-xs flex justify-center items-center gap-2 mt-2 cursor-not-allowed">
-                            ⚓ Anchored (Must unlock in Homeroom)
-                        </div>
                         <div v-else-if="editingSeat.isAnchored" class="w-full bg-slate-100 text-slate-500 font-bold py-3 rounded-lg shadow-sm border border-slate-200 text-xs flex justify-center items-center gap-2 mt-2 cursor-not-allowed">
                             ⚓ Anchored (Must unlock in Homeroom)
                         </div>
@@ -293,8 +304,8 @@
                 </div>
             </div>
         </div>
-		
-		<!-- NEW: Offline Conflict Modal -->
+        
+        <!-- Offline Conflict Modal -->
         <div v-if="showConflictModal" class="absolute inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden border border-rose-200">
                 <div class="bg-rose-600 text-white px-5 py-4 flex items-center gap-2 shrink-0">
@@ -319,8 +330,8 @@
                 </div>
             </div>
         </div>
-		
-		<!-- Bulk Anchor Modal -->
+        
+        <!-- Bulk Anchor Modal -->
         <div v-if="showBulkAnchorModal" class="absolute inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
                 <div class="bg-indigo-600 text-white px-5 py-3 flex justify-between items-center shrink-0">
@@ -344,7 +355,7 @@
             </div>
         </div>
 
-		<div v-if="showHelpModal" class="absolute inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" @click.self="showHelpModal = false">
+        <div v-if="showHelpModal" class="absolute inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" @click.self="showHelpModal = false">
             <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
                 <div class="bg-blue-600 text-white px-5 py-3 flex justify-between items-center">
                     <h2 class="text-sm font-bold flex items-center gap-2" v-text="helpContent[currentTab]?.title || 'Help'"></h2>
@@ -357,17 +368,17 @@
             </div>
         </div>
 
-		<!-- BUILD VERSION -->
-		<div @click="handleDevUnlock" class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider z-50 cursor-default select-none transition hover:text-slate-500">
-			v1.0.0
-		</div>
+        <!-- BUILD VERSION -->
+        <div @click="handleDevUnlock" class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider z-50 cursor-default select-none transition hover:text-slate-500">
+            v1.0.0
+        </div>
 
     </div> 
-	
+    
     <script type="module">
         import { DataStore } from './src/services/DataStore.js';
         import { CanvasEngine } from './src/services/CanvasEngine.js';
-		import { HelpContent } from './src/services/HelpContent.js';
+        import { HelpContent } from './src/services/HelpContent.js';
         import { PeriodControls } from './src/components/PeriodControls.js';
         import { PeriodAssignment } from './src/components/PeriodAssignment.js';
         import { StudentRegistry } from './src/components/StudentRegistry.js';
@@ -377,7 +388,7 @@
         import { LayoutControls } from './src/components/LayoutControls.js';
         import { RoomControls } from './src/components/RoomControls.js';
         import { RoomMenu } from './src/components/RoomMenu.js';     
-		import { CloudSync } from './src/services/CloudSync.js';
+        import { CloudSync } from './src/services/CloudSync.js';
         
         const { createApp } = Vue;
         DataStore.init();
@@ -396,25 +407,25 @@
             },
             data() {
                 return {
-					helpContent: HelpContent,
+                    helpContent: HelpContent,
                     showHelpModal: false,
                     currentTab: 'seating',
                     store: DataStore.state,
                     showAssetModal: false,
                     editingAsset: { id: '', label: '', width: 0, height: 0, fill: '#ffffff', stroke: '#000000', textFill: '#000000', elevation: 2, isLocked: false },
-					assetWidthFt: 0,
+                    assetWidthFt: 0,
                     assetWidthIn: 0,
                     assetHeightFt: 0,
                     assetHeightIn: 0,
                     showSeatModal: false,
                     editingSeat: { furnitureId: '', seatIndex: 0, studentId: null, isLocked: false, studentName: '', isAnchored: false, anchoredStudentId: null, seatKey: '' },
-					showBulkAnchorModal: false,
+                    showBulkAnchorModal: false,
                     bulkAnchorData: [],
-					isBoardMode: false,
-					showGlobalMenu: false,
-					devClickCount: 0,
+                    isBoardMode: false,
+                    showGlobalMenu: false,
+                    devClickCount: 0,
                     devClickTimer: null,
-					// Sync State variables
+                    // Sync State variables
                     syncStatus: 'disconnected',
                     showConflictModal: false,
                     pendingCloudPayload: null,
@@ -439,7 +450,7 @@
                 
                 window.addEventListener('open-asset-modal', (e) => {
                     this.editingAsset = { ...e.detail };
-					this.assetWidthFt = Math.floor(this.editingAsset.width / 12);
+                    this.assetWidthFt = Math.floor(this.editingAsset.width / 12);
                     this.assetWidthIn = Math.round(this.editingAsset.width % 12);
                     this.assetHeightFt = Math.floor(this.editingAsset.height / 12);
                     this.assetHeightIn = Math.round(this.editingAsset.height % 12);
@@ -471,9 +482,9 @@
                         }
                     }
                 });
-				
-				// --- CLOUD SYNC LISTENERS ---
-				// 1. When the cloud sends us new data (from another device)
+                
+                // --- CLOUD SYNC LISTENERS ---
+                // 1. When the cloud sends us new data (from another device)
                 window.addEventListener('cloud-data-received', (e) => {
                     const data = JSON.parse(e.detail);
                     
@@ -493,7 +504,7 @@
                     
                     this.refreshCanvasEnvironment();
                 });
-				
+                
                 // Status changes
                 window.addEventListener('cloud-status', (e) => {
                     this.syncStatus = e.detail.status;
@@ -519,7 +530,7 @@
 
                 // Standard payload receiver
                 window.addEventListener('cloud-data-received', (e) => {
-                    // NEW: Lock the transmitter so we don't accidentally send this right back!
+                    // Lock the transmitter so we don't accidentally send this right back!
                     CloudSync.isReceiving = true;
 
                     const data = JSON.parse(e.detail);
@@ -546,7 +557,7 @@
 
                     this.refreshCanvasEnvironment();
 
-                    // NEW: Wait half a second for CanvasEngine to finish its auto-saves, then unlock
+                    // Wait half a second for CanvasEngine to finish its auto-saves, then unlock
                     setTimeout(() => {
                         CloudSync.isReceiving = false;
                     }, 1500);
@@ -559,9 +570,15 @@
                 window.addEventListener('datastore-modified', () => {
                     if (CloudSync.syncKey) CloudSync.triggerPush();
                 });
-				
-				// Auto-connect on startup if a key was previously saved
+                
+                // Auto-connect on startup if a key was previously saved
                 const savedSyncKey = localStorage.getItem('Sync_WorkspaceKey');
+                
+                // Apply the lock on boot if it was saved
+                if (this.store.settings.isReadOnlyMode) {
+                    CloudSync.isReadOnly = true;
+                }
+
                 if (savedSyncKey && this.store.settings.isSyncUnlocked) {
                     CloudSync.init(savedSyncKey);
                 }
@@ -569,10 +586,10 @@
                 this.$nextTick(() => { this.refreshCanvasEnvironment(); });
             },
             methods: {
-				devWipeDatabase() {
+                devWipeDatabase() {
                     DataStore.devWipeDatabase();
                 },
-				// --- NEW BACKUP/RESTORE HANDLERS ---
+                // --- BACKUP/RESTORE HANDLERS ---
                 handleAppBackup() { DataStore.exportData(); },
                 handleAppRestore(event) {
                     const file = event.target.files ? event.target.files[0] : null;
@@ -581,7 +598,7 @@
                         event.target.value = ''; 
                     }
                 },
-				handleDevUnlock() {
+                handleDevUnlock() {
                     this.devClickCount++;
                     
                     if (this.devClickTimer) clearTimeout(this.devClickTimer);
@@ -627,16 +644,48 @@
                         }
                     }
                 },
-				
-				forceCloudPull() {
+                
+                forceCloudPull() {
                     if (CloudSync.syncKey) {
                         CloudSync.pullData();
                     } else {
                         alert("Please connect to a Cloud Workspace first.");
                     }
                 },
-				
-				// --- GLOBAL HEADER ACTIONS ---
+
+                // --- Force Push Handler ---
+                forceCloudPush() {
+                    if (CloudSync.syncKey) {
+                        if (confirm("⚠️ OVERWRITE CLOUD LAYOUT?\n\nAre you sure you want to push these local changes to the cloud? This will overwrite your master layout.")) {
+                            CloudSync.forcePush();
+                        }
+                    } else {
+                        alert("Please connect to a Cloud Workspace first.");
+                    }
+                },
+
+                // --- Read Only Lock Handler ---
+                toggleReadOnlyMode() {
+                    // Make sure the setting exists
+                    if (this.store.settings.isReadOnlyMode === undefined) {
+                        this.store.settings.isReadOnlyMode = false;
+                    }
+                    
+                    // Flip the setting
+                    this.store.settings.isReadOnlyMode = !this.store.settings.isReadOnlyMode;
+                    CloudSync.isReadOnly = this.store.settings.isReadOnlyMode;
+                    
+                    // Save to local storage
+                    DataStore.persist();
+                    
+                    if (this.store.settings.isReadOnlyMode) {
+                        alert("🔒 Read-Only Mode ENABLED.\n\nChanges made on this device will no longer be pushed to the Cloud. You can safely experiment without overwriting your master layout!");
+                    } else {
+                        alert("🔓 Read-Only Mode DISABLED.\n\nChanges made on this device will now push to the Cloud.");
+                    }
+                },
+                
+                // --- GLOBAL HEADER ACTIONS ---
                 exportSeatingPDF() {
                     if (this.currentTab !== 'seating') return;
                     const period = this.store.periods[this.store.ui.activePeriodId];
@@ -648,7 +697,7 @@
                     CanvasEngine.flipSeatText(this.store.settings.isTextFlipped);
                     DataStore.persist();
                 },
-				
+                
                 // -----------------------------------
 
                 refreshCanvasEnvironment() {
@@ -704,7 +753,7 @@
                     }
                     this.showSeatModal = false;
                 },
-				addAnchor() {
+                addAnchor() {
                     let unanchoredCount = 0;
                     const unanchoredSeats = [];
                     
@@ -753,7 +802,7 @@
                     this.showBulkAnchorModal = false;
                     this.bulkAnchorData = [];
                 },
-				
+                
                 toggleSeatLock() {
                     const group = CanvasEngine.canvas.getObjects().find(o => o.furnitureId === this.editingSeat.furnitureId);
                     if (group && group.seats) {
@@ -765,7 +814,7 @@
                     }
                     this.showSeatModal = false;
                 },
-				// --- SYNC MODAL HANDLER ---
+                // --- SYNC MODAL HANDLER ---
                 resolveConflict(choice) {
                     if (choice === 'local') {
                         // Clear the offline flag and force a push upward
