@@ -33,34 +33,43 @@ export const CloudSync = {
         this.pullData();
     },
 
-    // NEW: Manual one-time fetch instead of a continuous real-time listener
+    // Manual one-time fetch
     async pullData() {
         if (!this.syncKey) return;
         
         this.setStatus('syncing'); 
-        this.isReceiving = true; // Lock the transmitter so we don't push while unpacking
+        this.isReceiving = true; // Lock the transmitter
         
         try {
             const docRef = doc(db, "workspaces", this.syncKey);
-            const snapshot = await getDoc(docRef); // One-time read
+            const snapshot = await getDoc(docRef); 
             
             if (snapshot.exists()) {
                 const data = snapshot.data();
                 
                 if (localStorage.getItem('CS_OfflineChanges') === 'true') {
                     window.dispatchEvent(new CustomEvent('cloud-conflict', { detail: data.payload }));
+                    this.isReceiving = false; // FIX: Unlock so she can push her local conflict choice!
                     return;
                 }
 
                 if (data.payload) {
                     window.dispatchEvent(new CustomEvent('cloud-data-received', { detail: data.payload }));
+                    // If data exists, the 2.5s timer in index.html will handle the unlock
+                } else {
+                    this.isReceiving = false; // FIX: Unlock if payload is mysteriously empty
                 }
+            } else {
+                // THE SMOKING GUN FIX: The workspace doesn't exist yet!
+                console.log("☁️ Brand new workspace detected. Transmitter unlocked.");
+                this.isReceiving = false; 
             }
+            
             this.setStatus('connected');
         } catch (e) {
             console.error("☁️ Cloud Sync Pull Failed", e);
             this.setStatus('error');
-            this.isReceiving = false;
+            this.isReceiving = false; // FIX: Always unlock if the network fails
         }
     },
 
