@@ -18,7 +18,10 @@ export const CloudSync = {
     syncKey: null,
     unsubscribe: null,
     pendingTimeout: null,
-    isReceiving: false, // NEW: Lock to prevent infinite ping-pong loops
+    isReceiving: false,
+    
+    // NEW: Memory bank to kill server echoes
+    lastKnownPayload: null, 
 
     setStatus(status) {
         window.dispatchEvent(new CustomEvent('cloud-status', { detail: { status } }));
@@ -32,12 +35,17 @@ export const CloudSync = {
         console.log(`☁️ Cloud Sync Connected to: ${key}`);
 
         this.unsubscribe = onSnapshot(docRef, (snapshot) => {
-            // NEW: Ignore local echoes! Firebase immediately fires this when WE click save.
             if (snapshot.metadata.hasPendingWrites) return;
 
             if (snapshot.exists()) {
                 const data = snapshot.data();
                 
+                // NEW: THE ECHO KILLER
+                // If the incoming data is identical to what we just sent (or already received), ignore it!
+                if (data.payload === this.lastKnownPayload) return;
+                
+                this.lastKnownPayload = data.payload;
+
                 if (localStorage.getItem('CS_OfflineChanges') === 'true') {
                     window.dispatchEvent(new CustomEvent('cloud-conflict', { detail: data.payload }));
                     return;
@@ -52,7 +60,6 @@ export const CloudSync = {
     },
 
     triggerPush() {
-        // NEW: Do not push to the cloud if we are currently unpacking a cloud update!
         if (!this.syncKey || this.isReceiving) return; 
         
         if (!navigator.onLine) {
@@ -67,9 +74,13 @@ export const CloudSync = {
             this.setStatus('syncing'); 
 
             try {
+                // NEW: Memorize exactly what we are sending to the server BEFORE we send it
+                const payloadString = this.getCloudPayload();
+                this.lastKnownPayload = payloadString;
+
                 const docRef = doc(db, "workspaces", this.syncKey);
                 await setDoc(docRef, {
-                    payload: this.getCloudPayload(),
+                    payload: payloadString,
                     lastUpdated: serverTimestamp()
                 });
                 
