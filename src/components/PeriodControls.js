@@ -119,7 +119,7 @@ export const PeriodControls = {
             const allHomeroomStudents = Object.values(DataStore.state.students).filter(s => s.isHomeroom);
             
             if (allHomeroomStudents.length === 0) {
-                alert("No students are flagged as Homeroom Base. Edit students or update your CSV.");
+                alert("No students are flagged as Homeroom Student. Edit students or update your CSV.");
                 return;
             }
 

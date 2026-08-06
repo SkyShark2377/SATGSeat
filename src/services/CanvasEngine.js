@@ -1857,31 +1857,29 @@ export const CanvasEngine = {
         this.canvas.renderAll();
     },
     
-    exportToPDF(className = "Classroom") {
+    exportToPDF(periodName = "Classroom") {
         if (!this.canvas) return;
 
-        // 1. Reset the view so it is perfectly centered and scaled
-        this.recalculateDimensions();
+        // 1. Save original states so we can restore them seamlessly
+        const originalVPT = this.canvas.viewportTransform.slice();
+        const originalBg = this.canvas.backgroundColor;
+
+        // Reset camera to top-left for perfect mathematical cropping
+        this.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
         this.canvas.discardActiveObject();
 
-        // 2. Hide grid lines, strip highlights, and hide lock/anchor icons
+        // 2. Hide grids/icons, strip highlights, and REMOVE the background color
+        this.canvas.backgroundColor = '#ffffff'; // Force white background to save ink
         const objects = this.canvas.getObjects();
-        
+
         objects.forEach(obj => {
             if (obj.isBackgroundElement && obj.type === 'line') {
                 obj.visible = false;
             }
-            
             if (obj.isFurniture && obj.seats) {
                 obj.seats.forEach(s => {
-                    // Strip color highlights
-                    if (s.rectObj) {
-                        s.rectObj.set({
-                            fill: '#fef3c7',
-                            stroke: '#d97706',
-                            strokeWidth: 1.5
-                        });
-                    }
+                    // Strip color highlights for a clean print
+                    if (s.rectObj) s.rectObj.set({ fill: '#fef3c7', stroke: '#d97706', strokeWidth: 1.5 });
                     // Hide UI icons
                     if (s.lockIconObj) s.lockIconObj.visible = false;
                     if (s.anchorIconObj) s.anchorIconObj.visible = false;
@@ -1889,20 +1887,46 @@ export const CanvasEngine = {
             }
         });
 
-        // Force a render to apply the invisible grids, clean desks, and hidden icons
+        // Force render to apply the clean state and white background
         this.canvas.renderAll();
 
-        // 3. Export the canvas as a high-res PNG
-        const dataUrl = this.canvas.toDataURL({
-            format: 'png',
-            multiplier: 2 
+        // 3. Find the exact bounding box of everything CURRENTLY visible on the canvas
+        // This ensures the built-in header AND the room are perfectly captured together!
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        objects.forEach(obj => {
+            if (!obj.visible) return;
+            const bound = obj.getBoundingRect();
+            if (bound.left < minX) minX = bound.left;
+            if (bound.top < minY) minY = bound.top;
+            if (bound.left + bound.width > maxX) maxX = bound.left + bound.width;
+            if (bound.top + bound.height > maxY) maxY = bound.top + bound.height;
         });
 
-        // 4. Restore the UI (Grid lines, icons back on, run validation to get highlights back)
+        // Add a 20px padding to the final crop so nothing is touching the absolute edge
+        const pad = 20;
+        const cropLeft = minX - pad;
+        const cropTop = minY - pad;
+        const cropWidth = (maxX - minX) + (pad * 2);
+        const cropHeight = (maxY - minY) + (pad * 2);
+
+        // 4. Take the high-res snapshot of the dynamically calculated area
+        const dataUrl = this.canvas.toDataURL({
+            format: 'png',
+            multiplier: 2, // High-res output
+            left: cropLeft,
+            top: cropTop,
+            width: cropWidth,
+            height: cropHeight
+        });
+
+        // 5. Restore the UI back to how the user left it (including the blue background)
+        this.canvas.backgroundColor = originalBg;
         objects.forEach(obj => {
-            if (obj.isBackgroundElement && obj.type === 'line') {
-                obj.visible = true;
-            }
+            if (obj.isBackgroundElement && obj.type === 'line') obj.visible = true;
             if (obj.isFurniture && obj.seats) {
                 obj.seats.forEach(s => {
                     if (s.lockIconObj) s.lockIconObj.visible = true;
@@ -1911,34 +1935,43 @@ export const CanvasEngine = {
             }
         });
         
+        // Restore highlights and camera
         const minSep = DataStore.state.settings.minSeparationInches || 48;
         this.validateSeatingLayout(DataStore.state.students, minSep);
+        this.canvas.setViewportTransform(originalVPT);
+        this.canvas.renderAll();
 
-        // 5. Initialize and save the PDF
+        // 6. Initialize the PDF
         const { jsPDF } = window.jspdf;
+        const orientation = cropWidth > cropHeight ? 'l' : 'p';
+        
         const doc = new jsPDF({
-            orientation: 'landscape',
-            unit: 'in',
+            orientation: orientation,
+            unit: 'pt',
             format: 'letter'
         });
+        
+        const pdfWidth = doc.internal.pageSize.getWidth();
+        const pdfHeight = doc.internal.pageSize.getHeight();
 
-        const pdfWidth = 11;
-        const pdfHeight = 8.5;
-        const canvasW = this.canvas.width;
-        const canvasH = this.canvas.height;
-        
-        const ratio = Math.min(pdfWidth / canvasW, pdfHeight / canvasH);
-        const safeRatio = ratio * 0.95; 
-        
-        const imgWidth = canvasW * safeRatio;
-        const imgHeight = canvasH * safeRatio;
-        
-        const marginX = (pdfWidth - imgWidth) / 2;
-        const marginY = (pdfHeight - imgHeight) / 2;
+        // 7. Place the single, unified image (Header + Room) centered on the page
+        const margin = 40;
+        const maxImgWidth = pdfWidth - (margin * 2);
+        const maxImgHeight = pdfHeight - (margin * 2); 
 
-        doc.addImage(dataUrl, 'PNG', marginX, marginY, imgWidth, imgHeight);
+        // Scale the image down so it fits nicely on the page margins
+        const ratio = Math.min(maxImgWidth / cropWidth, maxImgHeight / cropHeight);
+        const finalWidth = cropWidth * ratio;
+        const finalHeight = cropHeight * ratio;
+
+        // Center the classroom horizontally and vertically on the page
+        const imgX = margin + ((maxImgWidth - finalWidth) / 2);
+        const imgY = margin + ((maxImgHeight - finalHeight) / 2);
+
+        // Drop it into the PDF (no manual text headers anymore!)
+        doc.addImage(dataUrl, 'PNG', imgX, imgY, finalWidth, finalHeight);
         
-        const safeName = className.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeName = periodName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         doc.save(`Seating_Chart_${safeName}.pdf`);
     },
 	

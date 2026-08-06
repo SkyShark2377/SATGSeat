@@ -35,7 +35,7 @@ export const StudentControls = {
                         </label>
                         <label class="flex items-center gap-2 cursor-pointer text-gray-700 text-[11px] font-bold">
                             <input type="checkbox" v-model="form.isHomeroom" class="w-3.5 h-3.5 text-blue-600 rounded"> 
-                            <span>Homeroom Base 🏠</span>
+                            <span>Homeroom Student 🏠</span>
                         </label>
                     </div>
 

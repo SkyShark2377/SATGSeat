@@ -8,7 +8,10 @@ export const StudentRegistry = {
                 
                 <div class="flex items-center gap-3">
                     <h2 class="text-lg font-black text-gray-800 uppercase tracking-wide">Student Directory</h2>
-                    <span class="text-xs font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{{ Object.keys(students).length }} Registered</span>
+                    <div class="flex gap-2">
+                        <span class="text-xs font-bold text-blue-600 bg-blue-100 px-3 py-1 rounded-full">{{ Object.keys(students).length }} Registered</span>
+                        <span class="text-xs font-bold text-indigo-600 bg-indigo-100 px-3 py-1 rounded-full shadow-sm">{{ homeroomCount }} in Homeroom</span>
+                    </div>
                 </div>
 
                 <div class="flex items-center gap-3">
@@ -59,7 +62,7 @@ export const StudentRegistry = {
                             
                             <td class="p-4 font-bold text-gray-800 flex items-center gap-1.5">
                                 {{ s.name }}
-                                <span v-if="s.isHomeroom" title="Homeroom Base" class="text-lg leading-none mt-0.5">🏠</span>
+                                <span v-if="s.isHomeroom" title="Homeroom Student" class="text-lg leading-none mt-0.5">🏠</span>
                                 <span v-if="s.notes" :title="s.notes" class="text-sm cursor-help opacity-70 hover:opacity-100 transition">📝</span>
                             </td>
                             <td class="p-4 text-gray-600">{{ s.gender }}</td>
@@ -137,6 +140,10 @@ export const StudentRegistry = {
         },
         sortedStudents() {
             return DataStore.getSortedStudents(null, this.settings.rosterSortMode, this.settings.rosterGradeFilter);
+        },
+        // NEW: Computed property for homeroom count
+        homeroomCount() {
+            return Object.values(this.students).filter(s => s.isHomeroom).length;
         }
     },
     methods: {

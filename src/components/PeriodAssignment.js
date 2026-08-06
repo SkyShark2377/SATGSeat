@@ -37,7 +37,7 @@ export const PeriodAssignment = {
                             <div class="flex flex-col">
                                 <span class="font-semibold text-gray-700 flex items-center gap-1.5 text-xs">
                                     {{ student.name }}
-                                    <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
+                                    <span v-if="student.isHomeroom" title="Homeroom Student" class="text-[10px]">🏠</span>
                                 </span>
                                 <span v-if="student.grade" class="text-[9px] text-gray-500 font-bold uppercase mt-0.5">Grade {{ student.grade }}</span>
                             </div>
@@ -63,7 +63,7 @@ export const PeriodAssignment = {
                             <div class="flex flex-col">
                                 <span class="font-semibold text-blue-900 flex items-center gap-1.5 text-xs">
                                     {{ student.name }}
-                                    <span v-if="student.isHomeroom" title="Homeroom Base" class="text-[10px]">🏠</span>
+                                    <span v-if="student.isHomeroom" title="Homeroom Student" class="text-[10px]">🏠</span>
                                 </span>
                                 <span v-if="student.grade" class="text-[9px] text-blue-700/70 font-bold uppercase mt-0.5">Grade {{ student.grade }}</span>
                             </div>
