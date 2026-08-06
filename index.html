@@ -255,9 +255,14 @@
                     </div>
                 </div>
                 
-                <div class="bg-white px-5 py-3 shrink-0 flex justify-end gap-2 border-t border-slate-200">
-                    <button @click="showAssetModal = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-4 rounded transition text-xs">Cancel</button>
-                    <button @click="handleSaveAssetEdit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-6 rounded transition text-xs shadow-sm">Save Changes</button>
+                <div class="bg-white px-5 py-3 shrink-0 flex justify-between items-center gap-2 border-t border-slate-200">
+                    <button @click="deleteSelectedObject" class="text-red-500 hover:text-red-700 hover:bg-red-50 font-bold px-3 py-1.5 rounded transition text-xs flex items-center gap-1">
+                        🗑️ Delete
+                    </button>
+                    <div class="flex gap-2">
+                        <button @click="showAssetModal = false" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-4 rounded transition text-xs">Cancel</button>
+                        <button @click="handleSaveAssetEdit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-6 rounded transition text-xs shadow-sm">Save Changes</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -296,8 +301,8 @@
                             ⚓ Anchored (Must unlock in Homeroom)
                         </div>
                         
-                        <button disabled class="w-full bg-gray-100 text-gray-400 border border-dashed border-gray-300 font-bold py-3 rounded-lg text-xs flex justify-center items-center gap-2 mt-4 cursor-not-allowed">
-                            ✂️ Delete Individual Desk (Coming Soon)
+                        <button @click="deleteSelectedObject" class="w-full bg-red-50 hover:bg-red-100 text-red-600 border border-dashed border-red-200 font-bold py-3 rounded-lg text-xs flex justify-center items-center gap-2 mt-4 transition">
+                            ✂️ Delete Desk/Group
                         </button>
                     </div>
 
@@ -370,7 +375,7 @@
 
         <!-- BUILD VERSION -->
         <div @click="handleDevUnlock" class="fixed bottom-2 right-3 text-[10px] text-slate-400 font-bold tracking-wider z-50 cursor-default select-none transition hover:text-slate-500">
-            v1.0.0
+            v1.0.1
         </div>
 
     </div> 
@@ -712,6 +717,47 @@
                     DataStore.persist();
                 },
                 
+				// --- SMART TOUCH UI DELETE HANDLER ---
+                deleteSelectedObject() {
+                    const activeObjects = CanvasEngine.canvas.getActiveObjects();
+                    if (!activeObjects || activeObjects.length === 0) return;
+
+                    // 1. Sort out what the user is trying to delete
+                    // Desks have a .seats array. Assets do not.
+                    const containsDesks = activeObjects.some(obj => obj.seats && obj.seats.length > 0);
+                    const containsAssets = activeObjects.some(obj => !obj.seats || obj.seats.length === 0);
+
+                    // 2. Check the Global Desk Lock 
+                    // (Ensure 'isLayoutLocked' matches your global lock variable name if you changed it)
+                    if (containsDesks && this.store.settings.isLayoutLocked) {
+                        alert("🔒 Desks are currently locked!\n\nPlease toggle off the global desk lock before deleting student seating.");
+                        return;
+                    }
+
+                    // 3. Check Individual Asset Locks
+                    const containsLockedAssets = activeObjects.some(obj => obj.isLocked || obj.lockMovementX || !obj.hasControls);
+                    
+                    if (containsAssets && containsLockedAssets) {
+                        alert("🔒 This furniture item is locked!\n\nPlease open its properties and unlock it before deleting.");
+                        return;
+                    }
+
+                    // 4. If all locks are clear, confirm and delete
+                    if (confirm("Are you sure you want to delete the selected item(s)?")) {
+                        CanvasEngine.canvas.discardActiveObject();
+                        
+                        activeObjects.forEach(obj => {
+                            CanvasEngine.canvas.remove(obj);
+                        });
+                        
+                        CanvasEngine.canvas.fire('object:modified');
+                        window.dispatchEvent(new CustomEvent('canvas-layout-modified'));
+                        
+                        this.showSeatModal = false;
+                        this.showAssetModal = false;
+                    }
+                },
+				
                 // -----------------------------------
 
                 refreshCanvasEnvironment() {

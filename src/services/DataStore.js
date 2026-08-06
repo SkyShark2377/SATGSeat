@@ -119,13 +119,12 @@ export const DataStore = {
             const lines = text.split(/\r?\n/);
             let importedCount = 0; let updatedCount = 0;
 
-            // NEW COLUMNS: Last, First, Gender, Preferred, Homeroom, Grade, Notes
+            // COLUMNS: Last, First, Gender, Preferred, Homeroom, Grade, Notes
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
                 
-                // THE FIX: Regex to split by commas EXCEPT when they are inside double quotes.
-                // It also cleans up the surrounding quotes and escapes after splitting.
+                // Regex to split by commas EXCEPT when they are inside double quotes.
                 const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
                 
                 const lastName = cols[0] ? cols[0].trim() : '';
@@ -134,36 +133,61 @@ export const DataStore = {
                 
                 const name = `${firstName} ${lastName}`.trim();
 
-                let gender = 'Unspecified';
-                if (cols[2]) {
-                    const g = cols[2].trim().toLowerCase();
-                    if (['m', 'male', 'boy', 'b'].includes(g)) gender = 'Male';
-                    else if (['f', 'female', 'girl', 'g'].includes(g)) gender = 'Female';
-                }
-
-                const requiresPreferredSeating = cols[3] && ['true', 'yes', 'y', '1'].includes(cols[3].trim().toLowerCase());
-                const isHomeroom = cols[4] && ['true', 'yes', 'y', '1'].includes(cols[4].trim().toLowerCase());
-                const grade = cols[5] ? cols[5].trim() : '';
-                
-                // NEW: Capture the 7th column for Notes
-                const notes = cols[6] ? cols[6].trim() : '';
-
+                // Look for an existing student by checking both name formats
                 const existingStudent = Object.values(this.state.students).find(s => 
                     s.name.toLowerCase() === name.toLowerCase() || 
                     (s.lastName && s.lastName.toLowerCase() === lastName.toLowerCase() && s.firstName && s.firstName.toLowerCase() === firstName.toLowerCase())
                 );
 
                 if (existingStudent) {
+                    // SMART MERGE: Always update names in case of spelling corrections in the CSV
                     existingStudent.firstName = firstName;
                     existingStudent.lastName = lastName;
                     existingStudent.name = name;
-                    existingStudent.gender = gender; 
-                    existingStudent.requiresPreferredSeating = requiresPreferredSeating; 
-                    existingStudent.isHomeroom = isHomeroom; 
-                    existingStudent.grade = grade; 
-                    existingStudent.notes = notes; // Update Notes
+
+                    // SMART MERGE: Only overwrite text fields if the CSV cell actually has text in it!
+                    // This protects in-app edits (like Notes) from being wiped out by a blank CSV column.
+                    if (cols[2] && cols[2].trim() !== '') {
+                        const g = cols[2].trim().toLowerCase();
+                        if (['m', 'male', 'boy', 'b'].includes(g)) existingStudent.gender = 'Male';
+                        else if (['f', 'female', 'girl', 'g'].includes(g)) existingStudent.gender = 'Female';
+                        else existingStudent.gender = cols[2].trim();
+                    }
+                    
+                    if (cols[5] && cols[5].trim() !== '') {
+                        existingStudent.grade = cols[5].trim();
+                    }
+                    
+                    if (cols[6] && cols[6].trim() !== '') {
+                        existingStudent.notes = cols[6].trim();
+                    }
+
+                    // SMART MERGE: Booleans
+                    // Because blank cells are ignored to protect data, a teacher must explicitly 
+                    // type "Y" or "N" to change these flags via CSV.
+                    if (cols[3] && cols[3].trim() !== '') {
+                        existingStudent.requiresPreferredSeating = ['true', 'yes', 'y', '1'].includes(cols[3].trim().toLowerCase());
+                    }
+                    
+                    if (cols[4] && cols[4].trim() !== '') {
+                        existingStudent.isHomeroom = ['true', 'yes', 'y', '1'].includes(cols[4].trim().toLowerCase());
+                    }
+
                     updatedCount++;
                 } else {
+                    // BRAND NEW STUDENT CREATION
+                    let gender = 'Unspecified';
+                    if (cols[2]) {
+                        const g = cols[2].trim().toLowerCase();
+                        if (['m', 'male', 'boy', 'b'].includes(g)) gender = 'Male';
+                        else if (['f', 'female', 'girl', 'g'].includes(g)) gender = 'Female';
+                    }
+
+                    const requiresPreferredSeating = cols[3] && ['true', 'yes', 'y', '1'].includes(cols[3].trim().toLowerCase());
+                    const isHomeroom = cols[4] && ['true', 'yes', 'y', '1'].includes(cols[4].trim().toLowerCase());
+                    const grade = cols[5] ? cols[5].trim() : '';
+                    const notes = cols[6] ? cols[6].trim() : '';
+
                     const id = 'std_' + Math.random().toString(36).substr(2, 9).toUpperCase();
                     this.state.students[id] = { id, firstName, lastName, name, gender, requiresPreferredSeating, isHomeroom, grade, notes, restrictedStudentIds: [], ownedSeatKey: null };
                     importedCount++;
